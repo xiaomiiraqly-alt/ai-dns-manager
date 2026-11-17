@@ -53,22 +53,25 @@ def select(report,services,candidates,previous=None,pinned_provider=None):
 
 class Stability:
     def __init__(self,failures=2,hold_seconds=300):
-        self.failures=failures;self.hold_seconds=hold_seconds;self.counts={};self.switched={}
+        self.failures=failures;self.hold_seconds=hold_seconds;self.counts={};self.targets={};self.switched={}
     def approve(self,proposed,current,now=None):
         now=time.time() if now is None else now
         if not proposed['applicable']:
             # A failed scan interrupts the consecutive-failure sequence; it must
             # not be counted as an implicit confirmation of a future switch.
-            self.counts.clear()
+            self.counts.clear();self.targets.clear()
             return False,'required-service-unavailable'
         if not current:return True,'initial-plan'
         previous={r['service']:r.get('candidate') for r in current['routes']}
         changed=[]; reasons=[]
         for route in proposed['routes']:
             sid=route['service']
-            if route['candidate']==previous.get(sid):self.counts.pop(sid,None);continue
+            if route['candidate']==previous.get(sid):
+                self.counts.pop(sid,None);self.targets.pop(sid,None);continue
             changed.append(sid)
-            self.counts[sid]=self.counts.get(sid,0)+1
+            target=route['candidate']
+            self.counts[sid]=self.counts.get(sid,0)+1 if self.targets.get(sid)==target else 1
+            self.targets[sid]=target
             if self.counts[sid]<self.failures:reasons.append('awaiting-consecutive-service-failures')
             if now-self.switched.get(sid,float('-inf'))<self.hold_seconds:reasons.append('switch-cooldown')
         if reasons:
@@ -76,5 +79,6 @@ class Stability:
             # The old implementation counted A, B, A as three observations of
             # a change, which could switch after a single transient recovery.
             return False,reasons[0]
-        for sid in changed:self.switched[sid]=now;self.counts.pop(sid,None)
+        for sid in changed:
+            self.switched[sid]=now;self.counts.pop(sid,None);self.targets.pop(sid,None)
         return True,'service-plan-confirmed'
