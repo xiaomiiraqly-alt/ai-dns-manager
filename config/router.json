@@ -1,0 +1,29 @@
+{
+  "timeout_seconds": 3,
+  "cooldown_seconds": 30,
+  "default_group": "standard",
+  "groups": {
+    "standard": [
+      "1.1.1.1",
+      "9.9.9.9"
+    ],
+    "ai": [
+      "1.1.1.1",
+      "9.9.9.9"
+    ]
+  },
+  "rules": [
+    {
+      "domain": "generativelanguage.googleapis.com",
+      "group": "ai"
+    },
+    {
+      "domain": "api.openai.com",
+      "group": "ai"
+    },
+    {
+      "domain": "api.anthropic.com",
+      "group": "ai"
+    }
+  ]
+}
