@@ -16,13 +16,13 @@ class AuditRegressions(unittest.TestCase):
             'id': 'dns-a', 'provider_id': 'dns-a',
             'upstream': {'name': 'dns-a', 'ip': '1.1.1.1'},
         }
-        # A DNS answer containing five A records must not be marked eligible
-        # when the scanner checked only the first four.
+        # A DNS answer containing seventeen A records must not be marked eligible
+        # when the scanner checked only the first sixteen.
         def dns(query, upstream, *args):
             result = bytearray(answer(query, ip='8.8.8.8'))
-            result[6:8] = (5).to_bytes(2, 'big')
+            result[6:8] = (17).to_bytes(2, 'big')
             one = bytes(result[-16:])
-            for octet in range(9, 13):
+            for octet in range(9, 25):
                 result.extend(one[:-1] + bytes([octet]))
             return bytes(result)
         def http(service, ip, **kwargs):
