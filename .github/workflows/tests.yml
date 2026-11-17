@@ -30,6 +30,7 @@ jobs:
           python -m ai_dns_manager.server --check-config
           python -m ai_dns_manager.server --config config/router.smartdns.example.json --check-config
           python install.py --help
+          python -m ai_dns_manager.manager validate
   docker:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -43,3 +44,5 @@ jobs:
         run: docker run --rm --network none --read-only --cap-drop ALL ai-dns-manager:test --help
       - name: UDP/TCP listeners and clean SIGTERM
         run: python3 scripts/docker_smoke.py ai-dns-manager:test
+      - name: Service-aware listener and clean shutdown
+        run: python3 scripts/service_smoke.py ai-dns-manager:test

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — service-aware selection (experimental)
+
+- Add 44 extensible web/API profiles with required/preferred/off modes and explicit evidence thresholds.
+- Compare ordinary-DNS and Smart-DNS paths using actual returned target addresses; add no-key and opt-in authenticated probes.
+- Rank required coverage before all preferred scores, choose per-service reserves, use sticky selection, failure rounds and cooldown.
+- Restore provider feed auto-updates, six-hour cache, source validation, stale-good fallback, deduplication, exclusions and address discovery.
+- Add continuous private service manager and Docker-only installer mode with protected state and optional local secrets file.
+- Preserve original provider DATA license/notice; do not copy or execute original Windows code.
+- Add offline tests for service classification, ranking, cached updates, credential boundaries and end-to-end scan/selection/DNS forwarding.
+- Do not claim universal service/model support or real VPS access until runtime checks pass.
+
 ## 0.3.0 — encrypted private DNS service (experimental)
 
 - Add RFC 8484 binary DoH and authenticated DoT, numeric bootstrap endpoints and strict TLS verification.

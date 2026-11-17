@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "scan_interval_seconds": 300,
+  "round_budget_seconds": 300,
+  "route_ttl_seconds": 1800,
+  "workers": 12,
+  "failure_rounds": 2,
+  "switch_cooldown_seconds": 300,
+  "max_api_requests": 8,
+  "authorized_services": [],
+  "credential_provider_ids": [
+    "reference"
+  ],
+  "router": {
+    "timeout_seconds": 3,
+    "request_timeout_seconds": 8,
+    "cooldown_seconds": 30,
+    "failure_threshold": 2,
+    "recovery_threshold": 2,
+    "health_interval_seconds": 30,
+    "probe_name": "example.com",
+    "max_workers": 32,
+    "allowed_clients": [
+      "127.0.0.0/8",
+      "::1/128",
+      "172.16.0.0/12"
+    ],
+    "default_group": "standard",
+    "groups": {
+      "standard": [
+        {
+          "name": "cloudflare-doh",
+          "protocol": "doh",
+          "bootstrap_ip": "1.1.1.1",
+          "url": "https://cloudflare-dns.com/dns-query"
+        },
+        {
+          "name": "quad9-dot",
+          "protocol": "dot",
+          "bootstrap_ip": "9.9.9.9",
+          "hostname": "dns.quad9.net"
+        }
+      ]
+    },
+    "rules": []
+  },
+  "service_overrides": {
+    "modes": {},
+    "minimum_evidence": {},
+    "custom_services": []
+  },
+  "providers": {
+    "sources": [
+      {
+        "id": "mahiron",
+        "format": "aidns-v1",
+        "refresh_seconds": 21600,
+        "urls": [
+          "https://raw.githubusercontent.com/Mahiron-hq/ai-dns/main/src/providers.json",
+          "https://cdn.jsdelivr.net/gh/Mahiron-hq/ai-dns@main/src/providers.json"
+        ]
+      },
+      {
+        "id": "dnsswitch",
+        "format": "dnsswitch",
+        "refresh_seconds": 21600,
+        "urls": [
+          "https://raw.githubusercontent.com/WhIteGh0s1/DnsSwitch/main/presets.txt",
+          "https://cdn.jsdelivr.net/gh/WhIteGh0s1/DnsSwitch@main/presets.txt"
+        ]
+      }
+    ],
+    "baselines": [
+      {
+        "name": "cloudflare-doh",
+        "protocol": "doh",
+        "bootstrap_ip": "1.1.1.1",
+        "url": "https://cloudflare-dns.com/dns-query"
+      },
+      {
+        "name": "quad9-dot",
+        "protocol": "dot",
+        "bootstrap_ip": "9.9.9.9",
+        "hostname": "dns.quad9.net"
+      }
+    ],
+    "discover_addresses": true,
+    "exclude_providers": [],
+    "exclude_addresses": [],
+    "custom_providers": [
+      {
+        "id": "dns-ai",
+        "name": "DNS-AI",
+        "hosts": [
+          "dns.dns-ai.ru"
+        ],
+        "ipv4": [
+          "194.87.196.13",
+          "45.151.102.219"
+        ],
+        "doh": [
+          "https://dns.dns-ai.ru/dns-query"
+        ],
+        "dot": [
+          "dns.dns-ai.ru"
+        ]
+      },
+      {
+        "id": "zombie",
+        "name": "ZombieDNS",
+        "hosts": [
+          "dns.zombiez.ru"
+        ],
+        "ipv4": [
+          "186.243.168.31"
+        ],
+        "doh": [
+          "https://dns.zombiez.ru/dns-query"
+        ],
+        "dot": [
+          "dns.zombiez.ru"
+        ]
+      }
+    ]
+  }
+}

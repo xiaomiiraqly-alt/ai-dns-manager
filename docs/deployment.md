@@ -47,3 +47,11 @@ For a production design, the DNS endpoint should be on a private reachable servi
 **Multi-hop warning:** if ingress and egress AWG servers both use the same tunnel prefix, a DNS address from that prefix may resolve to the wrong end. Choose a non-overlapping service subnet and an explicit route, with a valid return path. A router that excludes RFC1918 destinations from its outbound tunnel also needs an explicit service route. Setting a DNS address in the client alone is insufficient.
 
 The supplied installer intentionally does not perform any of those mutations. Validate one test client before changing the rest. Client-side DoH, cached answers, existing TLS connections and IPv6 can bypass a DNS-only policy and must be tested separately.
+
+## v0.4 service-aware mode
+
+Use `python3 install.py install --service-aware` to run provider auto-updates, the service matrix and autonomous per-service selection. It remains a loopback-only pilot and requires no Compose plugin. Local settings are copied once to `local/manager.json`; persistent data lives in `local/service-state`. An isolated, network-disabled helper grants only the state-directory ownership needed by UID 65534. It does not receive a Docker socket, host network or a privileged flag.
+
+A real-key monitor additionally needs the local service/provider allowlists and an optional `--secrets-file /root/ai-dns.env`, outside the repository with private file permissions. Nothing uploads these secrets. Repeated generation consumes the account's quota and may cost money; keep the request budget and selected services small. See [service selection](service-selection.md).
+
+On update, the saved image/configuration snapshot supports rollback as before. Runtime reports/cache are persistent operational state, not part of the immutable configuration snapshot. Existing Docker/Compose deployments are not silently adopted or deleted.
