@@ -61,8 +61,14 @@ def scan(candidates,services,timeout=6,workers=12,round_budget=300,authorized=()
             row['latency_ms']=best.get('latency_ms',1e8)+row['dns']['latency_ms']
             row['eligible']=acceptable(service,best)
             row['partial_address_coverage']=len(checks)<len(row['dns']['addresses'])
+            # Unchecked DNS answers cannot be declared service-capable: clients may
+            # receive any returned A record, including addresses we never probed.
+            # A later scan may choose a route only after all addresses are verified.
+            if row['partial_address_coverage']:
+                row['eligible']=False
+                row['status']='PARTIAL_ADDRESS_COVERAGE'
             # A known failing returned address disqualifies the resolver for this service.
-            if any(not acceptable(service,c) for c in checks) and service['minimum_evidence'] not in ('authenticated','generation'):
+            if any(not acceptable(service,c) for c in checks):
                 row['eligible']=False
         except (OSError,ValueError) as exc:
             row['status']='DNS_ERROR';row['dns']['error']=type(exc).__name__
@@ -93,7 +99,9 @@ def scan(candidates,services,timeout=6,workers=12,round_budget=300,authorized=()
         row['with_key']=best
         # Authorization/quota failures are not relabelled as a healthy route by the anonymous gate.
         row['status'],row['evidence']=best['status'],best.get('evidence',0)
-        row['eligible']=all(acceptable(service,c) for c in keyed)
+        row['eligible']=all(acceptable(service,c) for c in keyed) and not row.get('partial_address_coverage',False)
+        if row.get('partial_address_coverage'):
+            row['status']='PARTIAL_ADDRESS_COVERAGE'
     references={}
     for row in rows:
         if row['reference']:references.setdefault(row['service'],set()).update(row['dns'].get('addresses',[]))
