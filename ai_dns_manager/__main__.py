@@ -8,6 +8,7 @@ import struct
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from .doh import doh_query
 
 
 def dns_query(name: str, server: str, timeout: float) -> list[str]:
@@ -86,11 +87,15 @@ def main() -> None:
         parser.error("timeout_seconds must be between 0 and 30")
     results = []
     for provider in config["providers"]:
-        name, server = provider["name"], str(ipaddress.IPv4Address(provider["ip"]))
-        item = {"name": name, "dns_server": server}
+        name = provider["name"]
+        protocol = provider.get("protocol", "udp")
+        if protocol not in ("udp", "doh-json"):
+            parser.error(f"Unsupported protocol for {name}: {protocol}")
+        server = str(ipaddress.IPv4Address(provider["ip"])) if protocol == "udp" else provider["url"]
+        item = {"name": name, "dns_server": server, "protocol": protocol}
         started = time.monotonic()
         try:
-            addresses = dns_query(host, server, timeout)
+            addresses = dns_query(host, server, timeout) if protocol == 'udp' else doh_query(host, server, timeout)
             item["dns"] = {"ok": True, "addresses": addresses, "latency_ms": round((time.monotonic()-started)*1000)}
             item["tls"] = [{"ip": ip, **check_tls(host, ip, timeout)} for ip in addresses[:4]]
         except (OSError, ValueError, TimeoutError) as exc:
