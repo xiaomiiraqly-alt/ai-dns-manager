@@ -56,7 +56,11 @@ class Stability:
         self.failures=failures;self.hold_seconds=hold_seconds;self.counts={};self.switched={}
     def approve(self,proposed,current,now=None):
         now=time.time() if now is None else now
-        if not proposed['applicable']:return False,'required-service-unavailable'
+        if not proposed['applicable']:
+            # A failed scan interrupts the consecutive-failure sequence; it must
+            # not be counted as an implicit confirmation of a future switch.
+            self.counts.clear()
+            return False,'required-service-unavailable'
         if not current:return True,'initial-plan'
         previous={r['service']:r.get('candidate') for r in current['routes']}
         changed=[]; reasons=[]
@@ -67,6 +71,10 @@ class Stability:
             self.counts[sid]=self.counts.get(sid,0)+1
             if self.counts[sid]<self.failures:reasons.append('awaiting-consecutive-service-failures')
             if now-self.switched.get(sid,float('-inf'))<self.hold_seconds:reasons.append('switch-cooldown')
-        if reasons:return False,reasons[0]
+        if reasons:
+            # Count only consecutive observations of the *same proposed route*.
+            # The old implementation counted A, B, A as three observations of
+            # a change, which could switch after a single transient recovery.
+            return False,reasons[0]
         for sid in changed:self.switched[sid]=now;self.counts.pop(sid,None)
         return True,'service-plan-confirmed'
