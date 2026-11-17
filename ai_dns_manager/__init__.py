@@ -1,2 +1,2 @@
-"""Experimental private DNS forwarding and diagnostics."""
-__version__ = "0.3.0"
+"""Private DNS forwarding and service-aware AI access selection."""
+__version__ = "0.4.0"

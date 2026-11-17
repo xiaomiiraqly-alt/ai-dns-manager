@@ -1,0 +1,1 @@
+The unmodified config/providers.seed.json and config/providers.schema.json snapshots comes from Mahiron-hq/ai-dns src/providers.json at commit 08eac6e19103d31017dd183631caa883ee282279 (Apache-2.0). It is DATA, not executable code. Original LICENSE and NOTICE are preserved here. The remaining independently written implementation remains MIT.

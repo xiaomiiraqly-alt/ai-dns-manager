@@ -2,19 +2,51 @@
 
 [![Tests](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml)
 
-**Experimental v0.3: private Linux DNS forwarding, encrypted upstreams, and read-only AI diagnostics.** Python 3.10+, standard library only. MIT licensed. Independent implementation, inspired by the workflow of [Mahiron-hq/ai-dns](https://github.com/Mahiron-hq/ai-dns); not a port of its Windows system modifications.
+**Experimental v0.4 — service-aware Smart DNS selection for Linux, Docker and private VPN deployments.**
 
-## What works
+The original workflow is restored: discover providers → ask for actual DNS answers → check each selected AI service through those answers → rank by required/preferred coverage → select a primary and same-service reserves → verify again periodically. DNS availability alone is not an AI availability test.
 
-- UDP and TCP DNS listeners; UDP/TCP, authenticated DoT, and RFC 8484 binary-message DoH upstreams.
-- Domain-suffix policy with longest-match selection. AI groups and ordinary traffic can use different upstreams.
-- Sticky failover within a group, failure thresholds, cooldown, and periodic DNS recovery probes. No silent fallback from an AI group to a different group.
-- Bounded concurrency, client-network ACLs, strict question/transaction matching, UDP-to-TCP fallback for truncated answers.
-- Batch checks that first ask the resolver for the **actual target address**, then verify that target's TLS certificate.
-- Optional authenticated Gemini generation check, distinguishing region refusal, credentials, quota, model problems and empty output. Keys are not stored in reports.
-- Non-root read-only Docker image, loopback-only installer without Compose, configuration snapshots and rollback.
+## New service-aware mode
 
-**A healthy DNS resolver or a valid certificate does not prove that Gemini works.** Automatic failover currently measures **DNS transport/response health**, not the availability of authenticated AI generation. HTTP API errors are reported by a separate, explicit probe and do not automatically rotate DNS. No claim of successful regional access is made.
+- **44 starter profiles**: web and API endpoints for text assistants, image/video/audio platforms, developer tools, aggregators and Russian services. Add an arbitrary public-domain service through JSON; the code is not limited to Gemini/ChatGPT/Claude.
+- **Required / preferred / off** modes. A missing required service prevents a new plan from being applied. Preferred services influence ranking but do not override required ones. Disabled services are not probed.
+- **Two kinds of route, two kinds of API check**: ordinary reference DNS versus Smart DNS; anonymous/fake-key checks versus explicitly authorized authenticated requests. Reference traffic still follows the machine's existing network/VPN.
+- Verified DNS→TLS→HTTP checks detect regional refusals, bot challenges, authentication, quota, configuration and transport failures separately. HTTP 401 with a known invalid-key response is only `AUTH_GATE`, **not proof of generation**.
+- Optional real text-generation checks use OpenAI-compatible or Anthropic adapters. A generic JSON adapter checks other authenticated APIs with an explicit success field. These are local trusted definitions, never downloaded from provider feeds.
+- **Provider auto-update** from the same two source projects as the original: Mahiron-hq/ai-dns and WhIteGh0s1/DnsSwitch, with GitHub/jsDelivr sources, six-hour cache, stale-good fallback, validation, merging, exclusions and public-IP discovery. An imported address becomes a routing candidate, not an automatically trusted working route.
+- **Per-service failover** with a sticky healthy route, consecutive-failure threshold and cooldown. Each backup must pass the same service's configured evidence threshold. An expired plan fails closed for monitored AI domains.
+- Private DNS UDP/TCP service with UDP/TCP/DoH/DoT upstreams, local snapshots and rollback. **No host DNS/firewall/VPN edits.**
+
+### What “support” means
+
+The registry is extensible, not a claim that every neural network on the Internet has been tested. A web profile checks the entry page, not browser login, account access, WebSocket sessions or successful paid image/video/audio generation. Special API operations need a corresponding local probe definition and credentials. Several AI models behind the same API hostname use the same DNS route; their availability may still differ by account/model.
+
+A domain cannot have two conflicting DNS policies based on HTTP paths. To test an API sharing its website's exact hostname, disable the overlapping web profile and supply a replacement custom profile at the desired evidence level. Separate web/API hostnames can be checked together.
+
+## Run the new selector without applying anything
+
+```bash
+python3 -m ai_dns_manager.manager validate
+python3 -m ai_dns_manager.manager scan --state-dir data/service-manager
+```
+
+Outputs: `catalogue.json`, `service-report.json`, `proposed-plan.json`. `scan` **does not activate** the plan. Default: Gemini API is required, other starter profiles preferred, no real API credentials used. Edit `config/manager.json` to preserve your own mandatory/desired set. [Full configuration and evidence guide](docs/service-selection.md).
+
+To install the continuous service-aware pilot **after reviewing the plan** (Docker Engine only; Compose not needed):
+
+```bash
+python3 install.py install --service-aware
+```
+
+The daemon refreshes provider data when due and periodically rechecks services. It publishes only host loopback `127.0.0.1:5353`. It does not connect itself to all VPN clients, alter system DNS, disable IPv6 on the host or restart AmneziaWG. Its local healthcheck proves process/listener health only; inspect the service report for actual AI results.
+
+**Privacy/cost:** real API tests are off by default. They need explicit service and DNS-provider allowlists plus local environment keys. Keys are never put into GitHub, provider feeds or JSON reports. Repeated generation checks may incur costs. See [security policy](SECURITY.md).
+
+## Russian / Русский
+
+Логика выбора теперь опирается на проверку самих AI-сервисов, а не только на ответ DNS. Обязательные и желательные сервисы сохранены. Успешный ответ с фиктивным ключом означает доступность точки входа, но не успешную генерацию. Для подтверждения генерации задайте `minimum_evidence: generation` и отдельно разрешите проверку с настоящим ключом.
+
+Каталог содержит 44 начальных профиля и поддерживает свои домены без изменения Python-кода. Это не утверждение о проверенной работе всех перечисленных продуктов на вашем VPS. Для сайтов проверяется HTTP-доступность; для нестандартных API нужен собственный профиль проверки. Автообновление каталога не скачивает и не исполняет чужой код.
 
 ## First: read-only diagnostics
 
@@ -64,8 +96,10 @@ Compose is optional: `docker compose up -d --build`. Do not mix the Compose life
 
 Установка рассчитана и на серверы без `docker compose`. По умолчанию это локальный пилот на `127.0.0.1:5353`, **не DNS для всех VPN-клиентов**. Подключение клиентов и настройка маршрута до DNS — отдельная операция. Рабочий VPN не перенастраивается.
 
-## Boundaries
+## Boundaries and licenses
 
-No public recursive service, UI, browser configuration, automatic provider-list downloading, DNS cache, DoQ/HTTP3, local DNSSEC validation, or automatic API-aware route selection in this version. DoH uses HTTP/1.1. IPv4 listener; IPv4 and IPv6 upstream literals supported. Existing application DNS caches/connections are not forcibly reset. The DNS monitor does not claim to detect service-specific region refusals.
+No public recursive service, GUI, full browser automation, media-generation jobs, local DNSSEC validator, DoQ/HTTP3 or client-side cache/session reset. DoH currently uses HTTP/1.1. The IPv4-only service test cannot validate an alternative IPv6 path: service-aware forwarding suppresses AAAA/HTTPS/SVCB records **only for monitored domains**; other domains and host IPv6 configuration are unchanged.
 
-See [provider sources](docs/providers.md), [security policy](SECURITY.md), and [changelog](CHANGELOG.md). Run offline tests with `python3 -m unittest discover -s tests -v`.
+Machine DNS settings and VPN routing still need an explicit deployment step. Shared or overlapping VPN subnets require careful forward/return routing; see [deployment](docs/deployment.md).
+
+Implementation: MIT. The unmodified original provider DATA snapshot (`config/providers.seed.json`) is Apache-2.0, with original license and attribution in `third_party/mahiron/`. No original executable source was copied. Run offline tests with `python3 -m unittest discover -s tests -v`.

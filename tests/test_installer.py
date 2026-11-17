@@ -65,3 +65,20 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('--privileged',start)
         self.assertNotIn('host',start)
         self.assertIn('pilot',states)
+
+class ServiceAwareInstallerTests(unittest.TestCase):
+    def test_manager_mode_uses_private_state_without_vpn_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'config').mkdir();(root/'config/manager.json').write_text('{}')
+            calls=[]
+            with patch.object(install,'ROOT',root),patch.object(install,'inspect',return_value=None),\
+                 patch.object(install,'docker',side_effect=lambda *a,**k:calls.append(a)),\
+                 patch.object(install.shutil,'which',return_value=None),\
+                 patch.object(install.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+                install.install('pilot',5353,None,service_aware=True)
+            start=next(a for a in calls if a[:2]==('run','-d'))
+            self.assertIn('ai_dns_manager.manager',start);self.assertIn('serve',start)
+            self.assertIn('/state',start)
+            self.assertIn('127.0.0.1:5353:5353/udp',start)
+            self.assertTrue(any('CHOWN' in a for a in calls))
+            self.assertFalse(any('--privileged' in a or 'amnezia-awg2' in a for a in calls))
