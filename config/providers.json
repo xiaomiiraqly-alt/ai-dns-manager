@@ -21,6 +21,16 @@
     {
       "name": "Candidate 2.58.127.63",
       "ip": "2.58.127.63"
+    },
+    {
+      "name": "Cloudflare DoH JSON baseline",
+      "protocol": "doh-json",
+      "url": "https://cloudflare-dns.com/dns-query"
+    },
+    {
+      "name": "Google DoH JSON baseline",
+      "protocol": "doh-json",
+      "url": "https://dns.google/resolve"
     }
   ]
 }
