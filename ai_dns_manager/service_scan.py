@@ -48,7 +48,7 @@ def scan(candidates,services,timeout=6,workers=12,round_budget=300,authorized=()
             row['dns']=memo.get(('dns',candidate['id'],service['domain']),resolve)
             if not row['dns']['ok']:return dict(row,status='DNS_NO_ADDRESS')
             checks=[]
-            for ip in row['dns']['addresses'][:4]:
+            for ip in row['dns']['addresses'][:16]:
                 if (stop and stop.is_set()) or clock()>=deadline:break
                 def check(ip=ip):
                     return http_probe(service,ip,timeout=min(timeout,max(.01,deadline-clock())))
