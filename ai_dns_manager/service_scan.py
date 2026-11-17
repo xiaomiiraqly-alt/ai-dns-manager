@@ -99,7 +99,9 @@ def scan(candidates,services,timeout=6,workers=12,round_budget=300,authorized=()
         row['with_key']=best
         # Authorization/quota failures are not relabelled as a healthy route by the anonymous gate.
         row['status'],row['evidence']=best['status'],best.get('evidence',0)
-        row['eligible']=all(acceptable(service,c) for c in keyed)
+        row['eligible']=all(acceptable(service,c) for c in keyed) and not row.get('partial_address_coverage',False)
+        if row.get('partial_address_coverage'):
+            row['status']='PARTIAL_ADDRESS_COVERAGE'
     references={}
     for row in rows:
         if row['reference']:references.setdefault(row['service'],set()).update(row['dns'].get('addresses',[]))
