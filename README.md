@@ -28,7 +28,7 @@ The container prints diagnostics to stdout. To save a report, mount a writable d
 
 ## What the tests mean
 
-For each configured DNS server, the program performs a UDP/53 A-record lookup for the target domain and verifies TLS against returned addresses (up to four). It does **not** use API credentials and cannot confirm API functionality or regional eligibility. A DNS timeout does not imply a DoH or DoT endpoint is unavailable. The default IPs are **unverified candidates, not endorsed providers**.
+For each configured DNS server, the program performs a UDP/53 or HTTPS JSON DoH A-record lookup for the target domain and verifies TLS against returned addresses (up to four). It does **not** use API credentials and cannot confirm API functionality or regional eligibility. A DNS timeout does not imply a DoH or DoT endpoint is unavailable. The default IPs are **unverified candidates, not endorsed providers**.
 
 Never disable TLS verification to force a passing test. A Smart DNS may route HTTPS to a third-party relay; review its operator and security before sending API credentials. Respect API provider geographic restrictions and terms.
 
@@ -40,7 +40,8 @@ Never disable TLS verification to force a passing test. A Smart DNS may route HT
 
 - [x] DNS UDP/53 and TLS diagnostics; JSON reports
 - [x] Dockerfile, CI tests and license
-- [ ] DoH/DoT diagnostics and configurable provider metadata
+- [x] JSON DoH diagnostics (Cloudflare/Google baselines)
+- [ ] RFC 8484 binary DoH and DoT diagnostics with provider metadata
 - [ ] DNS forwarding service with per-domain policy and explicit opt-in
 - [ ] Health-based failover, hysteresis and audit log
 - [ ] Optional integration with AmneziaWG without exposing port 53 publicly
