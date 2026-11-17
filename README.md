@@ -2,50 +2,70 @@
 
 [![Tests](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml)
 
-**Experimental Linux DNS toolkit.** Includes read-only UDP/DoH DNS and TLS diagnostics plus an **opt-in** local UDP/TCP DNS forwarder with basic upstream failover. It does not modify host DNS, routing, firewall, or AmneziaWG.
+**Experimental v0.3: private Linux DNS forwarding, encrypted upstreams, and read-only AI diagnostics.** Python 3.10+, standard library only. MIT licensed. Independent implementation, inspired by the workflow of [Mahiron-hq/ai-dns](https://github.com/Mahiron-hq/ai-dns); not a port of its Windows system modifications.
 
-## Quick start (Ubuntu)
+## What works
 
-Python 3.10+ is required. No third-party Python dependencies.
+- UDP and TCP DNS listeners; UDP/TCP, authenticated DoT, and RFC 8484 binary-message DoH upstreams.
+- Domain-suffix policy with longest-match selection. AI groups and ordinary traffic can use different upstreams.
+- Sticky failover within a group, failure thresholds, cooldown, and periodic DNS recovery probes. No silent fallback from an AI group to a different group.
+- Bounded concurrency, client-network ACLs, strict question/transaction matching, UDP-to-TCP fallback for truncated answers.
+- Batch checks that first ask the resolver for the **actual target address**, then verify that target's TLS certificate.
+- Optional authenticated Gemini generation check, distinguishing region refusal, credentials, quota, model problems and empty output. Keys are not stored in reports.
+- Non-root read-only Docker image, loopback-only installer without Compose, configuration snapshots and rollback.
+
+**A healthy DNS resolver or a valid certificate does not prove that Gemini works.** Automatic failover currently measures **DNS transport/response health**, not the availability of authenticated AI generation. HTTP API errors are reported by a separate, explicit probe and do not automatically rotate DNS. No claim of successful regional access is made.
+
+## First: read-only diagnostics
 
 ```bash
 git clone https://github.com/xiaomiiraqly-alt/ai-dns-manager.git
 cd ai-dns-manager
-python3 -m ai_dns_manager --config config/providers.json --output diagnostics.json
 python3 -m unittest discover -s tests -v
+python3 -m ai_dns_manager --config config/providers.json --output diagnostics.json
 ```
 
-Or use Docker without changing the host network:
+The candidate list includes ordinary baselines plus published DNS-AI and ZombieDNS endpoints. Candidates are **not endorsements**. Unlike the early prototype, DoH is `application/dns-message`, not a JSON-only interface. Bootstrap IPs are explicit so the forwarder never needs to resolve its own upstream through itself.
+
+To opt into a small paid/quotable Gemini test, set `GEMINI_API_KEY` and `GEMINI_MODEL` **locally**, without committing them. `OPENAI_API_KEY` and `INFERENCE_TEXT_MODEL` are also accepted for an existing Karakeep environment.
 
 ```bash
-docker build -t ai-dns-manager:dev .
-docker run --rm --network bridge --read-only --cap-drop ALL \
-  --security-opt no-new-privileges \
-  ai-dns-manager:dev
+python3 -m ai_dns_manager --gemini --max-api-probes 2 --output diagnostics.json
 ```
 
-The container prints diagnostics to stdout. To save a report, mount a writable directory and specify `--output /reports/diagnostics.json`.
+This sends at most two generation requests to distinct addresses that passed TLS verification. It does not save the key, response text, or original error body. Do not use unknown relays with sensitive content. No certificate checks can be disabled from configuration.
 
-## Local forwarder (experimental)\n\nSee [deployment instructions](docs/deployment.md). The supplied Compose file binds UDP/TCP port 5353 **only to 127.0.0.1** and does not change VPN clients' DNS. The example uses ordinary DNS servers for both standard and AI groups. Do not deploy it as a public recursive resolver.\n\n## What the tests mean
+## Install a local pilot (Docker Engine, no Compose needed)
 
-For each configured DNS server, the program performs a UDP/53 or HTTPS JSON DoH A-record lookup for the target domain and verifies TLS against returned addresses (up to four). It does **not** use API credentials and cannot confirm API functionality or regional eligibility. A DNS timeout does not imply a DoH or DoT endpoint is unavailable. The default IPs are **unverified candidates, not endorsed providers**.
+```bash
+python3 install.py install
+python3 install.py status
+docker logs --tail=30 ai-dns-manager
+```
 
-Never disable TLS verification to force a passing test. A Smart DNS may route HTTPS to a third-party relay; review its operator and security before sending API credentials. Respect API provider geographic restrictions and terms.
+This builds from the checked-out code and publishes **only `127.0.0.1:5353` UDP/TCP**. It does not edit `/etc/resolv.conf`, restart Docker, touch AmneziaWG or publish DNS on the public interface. The default router uses ordinary encrypted resolvers for both groups; it does **not** enable third-party Smart DNS silently.
+
+The installer copies settings to `local/router.json` once and mounts a per-install snapshot. It refuses to replace unmanaged containers. On a failed replacement it attempts to restore the previous managed container. Explicit commands:
+
+```bash
+python3 install.py rollback
+python3 install.py uninstall
+```
+
+A retained rollback snapshot is never silently deleted by a later update. [Deployment and update details](docs/deployment.md).
+
+Compose is optional: `docker compose up -d --build`. Do not mix the Compose lifecycle with the Python installer's lifecycle for the same container name.
 
 ## Русский
 
-Экспериментальный инструмент диагностики DNS и TLS для Linux. Диагностика только проверяет доступность. Дополнительно доступен экспериментальный локальный DNS-forwarder, запускаемый **только вручную**; он не меняет DNS, маршруты или конфигурацию VPN. Примеры адресов в `config/providers.json` не являются рекомендациями. Отказ API по региону нельзя автоматически считать неисправностью DNS.
+Проект теперь содержит DNS-сервис, а не только TLS-проверку четырёх IP. Сначала выполняется настоящий DNS-запрос по UDP/TCP/DoH/DoT; затем проверяется сертификат по **адресу из ответа**, а не по адресу резолвера.
 
-## Roadmap
+Для обычных и AI-доменов задаются отдельные группы. При сбое запрос повторяется через резерв внутри той же группы. Исправный резерв остаётся активным: нет постоянных скачков обратно на первый сервер. Монитор проверяет восстановление DNS. Работа Gemini с вашим ключом проверяется отдельно и только по явному `--gemini`.
 
-- [x] DNS UDP/53 and TLS diagnostics; JSON reports
-- [x] Dockerfile, CI tests and license
-- [x] JSON DoH diagnostics (Cloudflare/Google baselines)
-- [ ] RFC 8484 binary DoH and DoT diagnostics with provider metadata
-- [x] Experimental UDP/TCP DNS forwarder with per-domain policy and explicit opt-in
-- [x] Basic cooldown-based upstream failover\n- [ ] Background health checks, hysteresis and persistent audit log
-- [ ] Optional integration with AmneziaWG without exposing port 53 publicly
+Установка рассчитана и на серверы без `docker compose`. По умолчанию это локальный пилот на `127.0.0.1:5353`, **не DNS для всех VPN-клиентов**. Подключение клиентов и настройка маршрута до DNS — отдельная операция. Рабочий VPN не перенастраивается.
 
-## License
+## Boundaries
 
-MIT.
+No public recursive service, UI, browser configuration, automatic provider-list downloading, DNS cache, DoQ/HTTP3, local DNSSEC validation, or automatic API-aware route selection in this version. DoH uses HTTP/1.1. IPv4 listener; IPv4 and IPv6 upstream literals supported. Existing application DNS caches/connections are not forcibly reset. The DNS monitor does not claim to detect service-specific region refusals.
+
+See [provider sources](docs/providers.md), [security policy](SECURITY.md), and [changelog](CHANGELOG.md). Run offline tests with `python3 -m unittest discover -s tests -v`.

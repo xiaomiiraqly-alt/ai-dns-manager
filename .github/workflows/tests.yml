@@ -1,16 +1,17 @@
 name: Tests
-
 on:
   push:
   pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   unit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     strategy:
       matrix:
         python-version: ["3.10", "3.12", "3.13"]
@@ -19,17 +20,26 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Syntax check
-        run: python -m compileall -q ai_dns_manager tests
-      - name: Unit tests
+      - name: Syntax checks
+        run: python -m compileall -q ai_dns_manager tests install.py scripts
+      - name: Offline unit and network integration tests
         run: python -m unittest discover -s tests -v
-      - name: CLI smoke test
-        run: python -m ai_dns_manager --help
+      - name: CLI and config validation
+        run: |
+          python -m ai_dns_manager --help
+          python -m ai_dns_manager.server --check-config
+          python -m ai_dns_manager.server --config config/router.smartdns.example.json --check-config
+          python install.py --help
   docker:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build --pull -t ai-dns-manager:test .
-      - name: Verify CLI
-        run: docker run --rm --network none ai-dns-manager:test --help
+      - name: Build image and validate Compose
+        run: |
+          docker build --pull -t ai-dns-manager:test .
+          docker compose config --quiet
+      - name: Non-root read-only CLI
+        run: docker run --rm --network none --read-only --cap-drop ALL ai-dns-manager:test --help
+      - name: UDP/TCP listeners and clean SIGTERM
+        run: python3 scripts/docker_smoke.py ai-dns-manager:test

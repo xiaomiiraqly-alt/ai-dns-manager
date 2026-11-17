@@ -1,36 +1,48 @@
 {
   "target": "generativelanguage.googleapis.com",
-  "timeout_seconds": 4,
+  "timeout_seconds": 5,
   "providers": [
     {
-      "name": "Cloudflare (baseline)",
-      "ip": "1.1.1.1"
-    },
-    {
-      "name": "Candidate 194.87.196.13",
-      "ip": "194.87.196.13"
-    },
-    {
-      "name": "Candidate 45.151.102.219",
-      "ip": "45.151.102.219"
-    },
-    {
-      "name": "Candidate 186.243.168.31",
-      "ip": "186.243.168.31"
-    },
-    {
-      "name": "Candidate 2.58.127.63",
-      "ip": "2.58.127.63"
-    },
-    {
-      "name": "Cloudflare DoH JSON baseline",
-      "protocol": "doh-json",
+      "name": "cloudflare-doh",
+      "protocol": "doh",
+      "bootstrap_ip": "1.1.1.1",
       "url": "https://cloudflare-dns.com/dns-query"
     },
     {
-      "name": "Google DoH JSON baseline",
-      "protocol": "doh-json",
-      "url": "https://dns.google/resolve"
+      "name": "quad9-dot",
+      "protocol": "dot",
+      "bootstrap_ip": "9.9.9.9",
+      "hostname": "dns.quad9.net"
+    },
+    {
+      "name": "dns-ai-primary",
+      "protocol": "doh",
+      "bootstrap_ip": "194.87.196.13",
+      "url": "https://dns.dns-ai.ru/dns-query"
+    },
+    {
+      "name": "dns-ai-secondary",
+      "protocol": "doh",
+      "bootstrap_ip": "45.151.102.219",
+      "url": "https://dns.dns-ai.ru/dns-query"
+    },
+    {
+      "name": "dns-ai-dot",
+      "protocol": "dot",
+      "bootstrap_ip": "194.87.196.13",
+      "hostname": "dns.dns-ai.ru"
+    },
+    {
+      "name": "zombie-doh",
+      "protocol": "doh",
+      "bootstrap_ip": "186.243.168.31",
+      "url": "https://dns.zombiez.ru/dns-query"
+    },
+    {
+      "name": "zombie-dot",
+      "protocol": "dot",
+      "bootstrap_ip": "186.243.168.31",
+      "hostname": "dns.zombiez.ru"
     }
   ]
 }

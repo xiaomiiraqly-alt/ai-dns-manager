@@ -1,18 +1,29 @@
-# Experimental DNS forwarder. Bound to host loopback only.
-# Does NOT alter AmneziaWG, systemd-resolved, or host firewall.
 services:
   ai-dns:
     build: .
     image: ai-dns-manager:local
     container_name: ai-dns-manager
     restart: unless-stopped
-    command: ["python", "-m", "ai_dns_manager.server", "--config", "/app/config/router.json", "--listen", "0.0.0.0", "--port", "5353"]
-    entrypoint: []
+    entrypoint: ["python", "-m", "ai_dns_manager.server"]
+    command: ["--config", "/app/config/router.json", "--listen", "0.0.0.0", "--port", "5353"]
     ports:
       - "127.0.0.1:5353:5353/udp"
       - "127.0.0.1:5353:5353/tcp"
+    volumes:
+      - ./config/router.json:/app/config/router.json:ro
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
-    pids_limit: 100
-    mem_limit: 128m
+    pids_limit: 128
+    mem_limit: 192m
+    healthcheck:
+      test: ["CMD", "python", "-m", "ai_dns_manager.healthcheck"]
+      interval: 20s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

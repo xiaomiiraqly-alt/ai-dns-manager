@@ -1,15 +1,46 @@
 {
   "timeout_seconds": 3,
+  "request_timeout_seconds": 8,
   "cooldown_seconds": 30,
+  "failure_threshold": 2,
+  "recovery_threshold": 2,
+  "health_interval_seconds": 30,
+  "probe_name": "example.com",
+  "max_workers": 32,
+  "allowed_clients": [
+    "127.0.0.0/8",
+    "::1/128",
+    "172.16.0.0/12"
+  ],
   "default_group": "standard",
   "groups": {
     "standard": [
-      "1.1.1.1",
-      "9.9.9.9"
+      {
+        "name": "cloudflare-doh",
+        "protocol": "doh",
+        "bootstrap_ip": "1.1.1.1",
+        "url": "https://cloudflare-dns.com/dns-query"
+      },
+      {
+        "name": "quad9-dot",
+        "protocol": "dot",
+        "bootstrap_ip": "9.9.9.9",
+        "hostname": "dns.quad9.net"
+      }
     ],
     "ai": [
-      "1.1.1.1",
-      "9.9.9.9"
+      {
+        "name": "cloudflare-doh",
+        "protocol": "doh",
+        "bootstrap_ip": "1.1.1.1",
+        "url": "https://cloudflare-dns.com/dns-query"
+      },
+      {
+        "name": "quad9-dot",
+        "protocol": "dot",
+        "bootstrap_ip": "9.9.9.9",
+        "hostname": "dns.quad9.net"
+      }
     ]
   },
   "rules": [
@@ -18,11 +49,27 @@
       "group": "ai"
     },
     {
+      "domain": "gemini.google.com",
+      "group": "ai"
+    },
+    {
+      "domain": "aistudio.google.com",
+      "group": "ai"
+    },
+    {
       "domain": "api.openai.com",
       "group": "ai"
     },
     {
+      "domain": "chatgpt.com",
+      "group": "ai"
+    },
+    {
       "domain": "api.anthropic.com",
+      "group": "ai"
+    },
+    {
+      "domain": "claude.ai",
       "group": "ai"
     }
   ]
