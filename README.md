@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml)
 
-**Experimental Linux DNS and TLS diagnostic tool.** Designed for Docker/VPN environments, including AmneziaWG. Current version is **read-only**: no DNS server, failover, routing changes or VPN integration yet.
+**Experimental Linux DNS toolkit.** Includes read-only UDP/DoH DNS and TLS diagnostics plus an **opt-in** local UDP/TCP DNS forwarder with basic upstream failover. It does not modify host DNS, routing, firewall, or AmneziaWG.
 
 ## Quick start (Ubuntu)
 
@@ -26,7 +26,7 @@ docker run --rm --network bridge --read-only --cap-drop ALL \
 
 The container prints diagnostics to stdout. To save a report, mount a writable directory and specify `--output /reports/diagnostics.json`.
 
-## What the tests mean
+## Local forwarder (experimental)\n\nSee [deployment instructions](docs/deployment.md). The supplied Compose file binds UDP/TCP port 5353 **only to 127.0.0.1** and does not change VPN clients' DNS. The example uses ordinary DNS servers for both standard and AI groups. Do not deploy it as a public recursive resolver.\n\n## What the tests mean
 
 For each configured DNS server, the program performs a UDP/53 or HTTPS JSON DoH A-record lookup for the target domain and verifies TLS against returned addresses (up to four). It does **not** use API credentials and cannot confirm API functionality or regional eligibility. A DNS timeout does not imply a DoH or DoT endpoint is unavailable. The default IPs are **unverified candidates, not endorsed providers**.
 
@@ -34,7 +34,7 @@ Never disable TLS verification to force a passing test. A Smart DNS may route HT
 
 ## Русский
 
-Экспериментальный инструмент диагностики DNS и TLS для Linux. Сейчас только проверяет доступность, **не меняет** DNS, маршруты или конфигурацию VPN. Примеры адресов в `config/providers.json` не являются рекомендациями. Отказ API по региону нельзя автоматически считать неисправностью DNS.
+Экспериментальный инструмент диагностики DNS и TLS для Linux. Диагностика только проверяет доступность. Дополнительно доступен экспериментальный локальный DNS-forwarder, запускаемый **только вручную**; он не меняет DNS, маршруты или конфигурацию VPN. Примеры адресов в `config/providers.json` не являются рекомендациями. Отказ API по региону нельзя автоматически считать неисправностью DNS.
 
 ## Roadmap
 
@@ -42,8 +42,8 @@ Never disable TLS verification to force a passing test. A Smart DNS may route HT
 - [x] Dockerfile, CI tests and license
 - [x] JSON DoH diagnostics (Cloudflare/Google baselines)
 - [ ] RFC 8484 binary DoH and DoT diagnostics with provider metadata
-- [ ] DNS forwarding service with per-domain policy and explicit opt-in
-- [ ] Health-based failover, hysteresis and audit log
+- [x] Experimental UDP/TCP DNS forwarder with per-domain policy and explicit opt-in
+- [x] Basic cooldown-based upstream failover\n- [ ] Background health checks, hysteresis and persistent audit log
 - [ ] Optional integration with AmneziaWG without exposing port 53 publicly
 
 ## License
