@@ -1,39 +1,50 @@
 # AI DNS Manager
 
-Linux-first diagnostics and (planned) policy-based DNS routing for AI services, designed for Docker and VPN deployments.
+[![Tests](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml)
 
-> **Status: early prototype.** This release performs **read-only diagnostics only**. It does not install a DNS server, modify routes, change resolv.conf, or configure AmneziaWG.
+**Experimental Linux DNS and TLS diagnostic tool.** Designed for Docker/VPN environments, including AmneziaWG. Current version is **read-only**: no DNS server, failover, routing changes or VPN integration yet.
 
-## Quick start
+## Quick start (Ubuntu)
 
-Requires Python 3.10+; no third-party Python dependencies.
+Python 3.10+ is required. No third-party Python dependencies.
 
 ```bash
 git clone https://github.com/xiaomiiraqly-alt/ai-dns-manager.git
 cd ai-dns-manager
 python3 -m ai_dns_manager --config config/providers.json --output diagnostics.json
+python3 -m unittest discover -s tests -v
 ```
 
-Optional: `python3 -m unittest discover -s tests -v`
+Or use Docker without changing the host network:
 
-The tool checks DNS answers over UDP/53, then attempts a verified TLS connection to the target hostname using each returned IPv4 address. **A valid TLS connection does not establish that a paid or region-restricted AI API is usable.** No API credentials are transmitted.
+```bash
+docker build -t ai-dns-manager:dev .
+docker run --rm --network bridge --read-only --cap-drop ALL \
+  --security-opt no-new-privileges \
+  ai-dns-manager:dev
+```
 
-## Security
+The container prints diagnostics to stdout. To save a report, mount a writable directory and specify `--output /reports/diagnostics.json`.
 
-* Never disable TLS certificate verification to make a provider appear healthy.
-* A Smart DNS answer may direct traffic to a third-party relay; evaluate the provider's trust and privacy before using it with credentials.
-* DNS failures, TLS failures, and API authorization/region errors are distinct conditions.
-* Do not expose a recursive resolver on a public interface.
-* Respect each AI provider's terms and geographic availability requirements.
+## What the tests mean
 
-## Roadmap
+For each configured DNS server, the program performs a UDP/53 A-record lookup for the target domain and verifies TLS against returned addresses (up to four). It does **not** use API credentials and cannot confirm API functionality or regional eligibility. A DNS timeout does not imply a DoH or DoT endpoint is unavailable. The default IPs are **unverified candidates, not endorsed providers**.
 
-1. Read-only DNS and TLS diagnostics (initial implementation).
-2. Configurable DoH/DoT checks and per-provider service discovery.
-3. Local, domain-scoped DNS forwarder with explicit opt-in.
-4. Health-based failover with hysteresis, audit log, and rollback.
-5. Docker packaging and optional AmneziaWG integration.
+Never disable TLS verification to force a passing test. A Smart DNS may route HTTPS to a third-party relay; review its operator and security before sending API credentials. Respect API provider geographic restrictions and terms.
 
 ## Русский
 
-Проект для диагностики DNS и сетевой доступности AI-сервисов на Linux. Текущая версия **не меняет настройки DNS/VPN**. Для запуска достаточно Python 3.10+. Параметры проверок находятся в `config/providers.json`. Не используйте сторонние Smart DNS для запросов с ключами API без оценки доверия к оператору.
+Экспериментальный инструмент диагностики DNS и TLS для Linux. Сейчас только проверяет доступность, **не меняет** DNS, маршруты или конфигурацию VPN. Примеры адресов в `config/providers.json` не являются рекомендациями. Отказ API по региону нельзя автоматически считать неисправностью DNS.
+
+## Roadmap
+
+- [x] DNS UDP/53 and TLS diagnostics; JSON reports
+- [x] Dockerfile, CI tests and license
+- [ ] DoH/DoT diagnostics and configurable provider metadata
+- [ ] DNS forwarding service with per-domain policy and explicit opt-in
+- [ ] Health-based failover, hysteresis and audit log
+- [ ] Optional integration with AmneziaWG without exposing port 53 publicly
+
+## License
+
+MIT.
