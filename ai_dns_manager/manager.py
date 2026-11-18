@@ -66,8 +66,18 @@ def settings(path):
         # Existing local/manager.json files predate v0.6 and had empty
         # authorized_services and reference-only credential providers. Apply
         # this known requested policy to them without overwriting user files.
+        legacy_reference_default=(not cfg['authorized_services']
+                                  and cfg['credential_provider_ids']==['reference'])
         cfg['authorized_services']=list(dict.fromkeys(cfg['authorized_services']+['gemini-api']))
-        cfg['credential_provider_ids']=list(dict.fromkeys(cfg['credential_provider_ids']+['dns-ai']))
+        # The v0.5 local config used a reference-only default, which would
+        # spend credentialed requests on a route already observed REGION_BLOCKED.
+        # Migrate that *exact* legacy default to the one verified route.
+        # Explicit trust lists remain operator-controlled and can contain
+        # additional providers for automatic fallback.
+        if legacy_reference_default:
+            cfg['credential_provider_ids']=['dns-ai']
+        else:
+            cfg['credential_provider_ids']=list(dict.fromkeys(cfg['credential_provider_ids']+['dns-ai']))
     # Nothing above creates credentials: the manager fails closed until a
     # separate, root-owned env file is explicitly mounted at installation.
 
