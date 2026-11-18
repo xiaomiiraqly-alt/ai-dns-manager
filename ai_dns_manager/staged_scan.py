@@ -43,7 +43,12 @@ def _frontier(rows, maximum, cycle=0, previous=(), priority_provider_ids=()):
             selected.append(c)
             seen.add(c['id'])
     byid = {r['candidate']['id']: r for r in rows}
+    # A long historical plan may contain dozens of distinct preferred
+    # routes. It must not consume the entire small mandatory scan frontier.
+    previous_limit=max(1,maximum//4)
     for candidate_id in previous:
+        if len(selected)>=previous_limit:
+            break
         if candidate_id in byid:
             take(byid[candidate_id])
     # Mandatory generation cannot be verified if its trusted providers are
