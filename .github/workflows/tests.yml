@@ -36,12 +36,21 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Reproduce private checkout permissions (umask 077)
+        run: |
+          chmod -R go-rwx ai_dns_manager config third_party
+          chmod 600 LICENSE
+          test "$(stat -c '%a' ai_dns_manager/manager.py)" = "600"
       - name: Build image and validate Compose
         run: |
           docker build --pull -t ai-dns-manager:test .
           docker compose config --quiet
-      - name: Non-root read-only CLI
-        run: docker run --rm --network none --read-only --cap-drop ALL ai-dns-manager:test --help
+      - name: Non-root read-only CLI and authenticated manager configuration
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL ai-dns-manager:test --help
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --entrypoint python ai-dns-manager:test \
+            -m ai_dns_manager.manager validate
       - name: UDP/TCP listeners and clean SIGTERM
         run: python3 scripts/docker_smoke.py ai-dns-manager:test
       - name: Service-aware listener and clean shutdown
