@@ -8,6 +8,7 @@ def select(report,services,candidates,previous=None,pinned_provider=None):
     byid={c['id']:c for c in candidates}
     active=[s for s in services if s['mode']!='off']
     rows={(r['candidate'],r['service']):r for r in report['results']}
+    scanned_service_ids={r['service'] for r in report['results']}
     required=[s for s in active if s['mode']=='required']
     preferred=[s for s in active if s['mode']=='preferred']
     def works(cid,sid):return rows.get((cid,sid),{}).get('eligible',False)
@@ -36,7 +37,9 @@ def select(report,services,candidates,previous=None,pinned_provider=None):
         elif primary:options.sort(key=lambda c:c['id']!=primary['id'])
         if not options:
             if service['mode']=='required':missing.append(service['id'])
-            routes.append({'service':service['id'],'domains':service['routes'],'mode':service['mode'],'status':'UNAVAILABLE','candidate':None,'backups':[]})
+            routes.append({'service':service['id'],'domains':service['routes'],'mode':service['mode'],
+                           'status':'UNAVAILABLE' if service['id'] in scanned_service_ids else 'NOT_SCANNED',
+                           'candidate':None,'backups':[]})
             continue
         main=options[0]
         reserves=sorted(options[1:],key=lambda c:c['provider_id']==main['provider_id'])[:3]

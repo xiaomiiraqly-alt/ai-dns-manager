@@ -84,7 +84,7 @@ API requests are deduplicated by service/address within a round. The active rout
 
 Reference resolvers and Smart DNS candidates are both tested from the deployment process's network. No test disables or bypasses the existing VPN. An address differing from the reference is a clue, **not proof** that it is a relay: CDN/anycast answers may differ legitimately.
 
-Each target address is queried through its candidate resolver, then HTTPS uses that exact returned address with the original Host/SNI/certificate name. The resolver's own IP is never blindly treated as the target relay. Up to four returned IPv4 addresses are probed; reports flag incomplete address coverage. A known failing tested address disqualifies that resolver for the service.
+Each target address is queried through its candidate resolver, then HTTPS uses that exact returned address with the original Host/SNI/certificate name. The resolver's own IP is never blindly treated as the target relay. Up to sixteen returned IPv4 addresses are probed; more than sixteen or any unchecked returned addresses make a route ineligible. Any failing address disqualifies that route.
 
 ## Automatic provider updates
 
@@ -101,12 +101,56 @@ python3 -m ai_dns_manager.manager serve --state-dir data/service-manager
 python3 -m ai_dns_manager.manager status --state-dir data/service-manager
 ```
 
-`scan` is diagnostic and never activates routing. `serve` is an opt-in loopback DNS server plus continuous controller. The first usable full-required proposal can be applied; subsequent route changes require consecutive failures and honor cooldown. Provider-list refresh and service checks are separate intervals. Reference settings: service round every 300 seconds, source refresh 21600 seconds, last-good route lifetime 1800 seconds. Configuration can raise a full-scan budget or disable unnecessary profiles; untested candidates are explicitly marked, never counted as successful.
+`scan` is diagnostic and never activates routing. `serve` is an opt-in loopback DNS server plus continuous controller. The first usable full-required proposal can be applied; subsequent route changes require consecutive failures and honor cooldown. Provider-list refresh and service checks are separate intervals. Reference settings: service round every 300 seconds, source refresh 21600 seconds, last-good route lifetime 1800 seconds. Configuration can raise a staged-scan budget or disable unnecessary profiles; untested candidates are explicitly marked, never counted as successful.
 
 A temporary failure cannot erase the active plan. Expired state, changed service/provider policy, or missing required evidence cannot be reused as proof of success. Credentialed plans are rechecked after process restart. Updates swap the whole validated plan atomically. DNS changes affect new lookups; existing browser caches and TLS connections are not forcibly cleared.
 
-Files: `catalogue.json` (source provenance), `service-report.json` (anonymous and keyed outcomes), `proposed-plan.json` (ranking, gaps, routes), `active-plan.json` (last applied plan), and validated source cache. State is local and Git-ignored. The process listener healthcheck remains separate from service availability.
+Files: `scan-progress.json` (current phase and counts), `catalogue.json` (source provenance), `service-report.json` (anonymous and keyed outcomes), `proposed-plan.json` (ranking, gaps, routes), `active-plan.json` (last applied plan), and validated source cache. State is local and Git-ignored. The process listener healthcheck remains separate from service availability.
 
 ## Deployment boundary
 
 Neither `scan` nor `serve` changes the VPS's system DNS, AmneziaWG, NAT, clients or public port 53. The installer publishes only 127.0.0.1:5353. Connecting VPN clients still requires a deliberately chosen private DNS address and verified two-way routes. There is no blanket claim that all listed products work on the user's VPS; that is exactly what the reports are intended to establish.
+
+## Bounded staged scanner (v0.5)
+
+The earlier 136-endpoint × 44-service configuration could schedule **5,984 candidate-service combinations** before the first route existed. Each response could contain up to sixteen IPs. This overloaded a small VPS and delayed the first `proposed-plan.json`.
+
+The default controller now runs four bounded phases:
+
+1. **DNS prefilter:** one low-timeout DNS query per candidate, using the first mandatory domain, with no HTTP or API credential requests. The result is **not** service-availability evidence.
+2. **Required:** pick up to 12 endpoints representing distinct DNS answers, keeping the existing active candidates and a reference where possible. Perform the full DNS→verified TLS→HTTP check on all required profiles, within 55 seconds.
+3. **Preferred:** evaluate up to four promising endpoints against preferred profiles, within 75 seconds. If required coverage is missing, the optional phase is reduced to 12 seconds. A different provider can still be selected for an independently validated preferred service.
+4. **Plan/report:** always write `service-report.json` and `proposed-plan.json` after a completed scan. A missing mandatory service means **no new plan is applied**. Routes lacking sufficient evidence remain unavailable.
+
+Selection is deliberately **bounded, not exhaustive**: a non-selected provider is `NOT_SCANNED`, not proven broken. The scanner rotates distinct DNS-answer groups on later rounds and retains previously selected candidates. This trades immediate whole-catalogue coverage for availability and bounded resource usage. The first mandatory domain is the fast discriminator; providers that only serve a different mandatory domain may be discovered in a later, more specialized scan.
+
+`config/manager.json` accepts:
+
+```json
+{
+  "scan_strategy": {
+    "required_candidates": 12,
+    "preferred_candidates": 4,
+    "dns_timeout": 1.5,
+    "http_timeout": 2.5,
+    "required_seconds": 55,
+    "preferred_seconds": 75
+  }
+}
+```
+
+These are example fields **inside the full manager configuration**. Existing `local/manager.json` snapshots need not be overwritten: the manager supplies these defaults when omitted. Worker concurrency is capped at eight by the staged scanner, even if an older local configuration requests twelve.
+
+Monitor the first cycle from the host:
+
+```bash
+cd /opt/ai-dns-manager/repo
+cat local/service-state/scan-progress.json
+ls -lh local/service-state/
+docker logs --tail 30 ai-dns-manager
+docker exec ai-dns-manager python -m ai_dns_manager.manager status --config /app/config/router.json --state-dir /state
+```
+
+The listener becoming `healthy` means only that it can answer a local UDP/TCP query. It is **not** a valid AI service plan. Before switching any VPN client, inspect `active-plan.json`, missing required services, actual failure classifications, and authenticated generation when that evidence is demanded.
+
+Upgrading the existing installer creates a managed rollback container. It does not reconfigure AmneziaWG, the host resolver, public port 53 or other containers. Do not perform production DNS cutover based on the local listener healthcheck alone.
