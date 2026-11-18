@@ -14,6 +14,7 @@ from .policy import ProviderPool,event
 from .selection import select,Stability
 from .service_schema import load_services
 from .service_scan import scan
+from .staged_scan import staged_scan
 from .server import ThreadedUDP,ThreadedTCP,UDPHandler,TCPHandler
 from . import wire
 
@@ -36,6 +37,17 @@ def settings(path):
         if isinstance(n,bool) or not isinstance(n,int) or not low<=n<=high:raise ValueError('Invalid '+key)
     cfg.setdefault('authorized_services',[]);cfg.setdefault('credential_provider_ids',['reference'])
     cfg.setdefault('service_overrides',{})
+    scan_policy=cfg.setdefault('scan_strategy',{})
+    if not isinstance(scan_policy,dict):raise ValueError('Invalid scan strategy')
+    for key,default,low,high in [('required_candidates',12,1,32),('preferred_candidates',4,1,16),
+                                 ('required_seconds',55,1,900),('preferred_seconds',75,1,900)]:
+        value=scan_policy.setdefault(key,default)
+        if isinstance(value,bool) or not isinstance(value,int) or not low<=value<=high:
+            raise ValueError('Invalid scan strategy: '+key)
+    for key,default,low,high in [('dns_timeout',1.5,.1,8),('http_timeout',2.5,.1,10)]:
+        value=scan_policy.setdefault(key,default)
+        if isinstance(value,bool) or not isinstance(value,(int,float)) or not low<=value<=high:
+            raise ValueError('Invalid scan strategy: '+key)
     if not isinstance(cfg['authorized_services'],list) or not isinstance(cfg['credential_provider_ids'],list):raise ValueError('Invalid credential authorization settings')
     services=load_services(read_json(ROOT/'config/services.json'),cfg['service_overrides'])
     known={s['id']:s for s in services}
@@ -76,9 +88,9 @@ class ServicePool:
 
 
 class Controller:
-    def __init__(self,cfg,services,state_dir,fetcher=None,resolver=None,scanner=scan,clock=time.time):
+    def __init__(self,cfg,services,state_dir,fetcher=None,resolver=None,scanner=None,clock=time.time):
         self.cfg=cfg;self.services=services;self.state=Path(state_dir);self.clock=clock
-        self.fetcher=fetcher;self.resolver=resolver;self.scanner=scanner
+        self.fetcher=fetcher;self.resolver=resolver;self.scanner=scanner or staged_scan;self.scan_cycle=0
         self.stability=Stability(cfg['failure_rounds'],cfg['switch_cooldown_seconds'])
         self.pool=ServicePool(cfg['router'],services,cfg['route_ttl_seconds'],clock)
         self.current=None
@@ -93,6 +105,7 @@ class Controller:
                 self.pool.install(saved);self.current=saved
         except (OSError,ValueError,KeyError,TypeError):pass
     def once(self,offline=False,refresh=False,apply=False,stop=None):
+        atomic_json(self.state/'scan-progress.json',{'phase':'provider_catalogue','timestamp':time.time()})
         def fetch(url):
             if stop and stop.is_set():raise InterruptedError()
             return (self.fetcher or download)(url)
@@ -109,10 +122,19 @@ class Controller:
         catalogue=build_catalogue(self.cfg['providers'],self.state/'cache',ROOT/'config/providers.seed.json',offline,refresh,**options)
         if stop and stop.is_set():raise InterruptedError()
         atomic_json(self.state/'catalogue.json',catalogue)
-        report=self.scanner(catalogue['candidates'],self.services,workers=self.cfg['workers'],
-            round_budget=self.cfg['round_budget_seconds'],authorized=self.cfg['authorized_services'],
-            max_api_requests=self.cfg['max_api_requests'],credential_providers=self.cfg['credential_provider_ids'],
-            preferred_endpoints=[(r['candidate'],r['service']) for r in (self.current or {}).get('routes',[])],stop=stop)
+        scan_options={'workers':self.cfg['workers'],
+            'round_budget':self.cfg['round_budget_seconds'],'authorized':self.cfg['authorized_services'],
+            'max_api_requests':self.cfg['max_api_requests'],'credential_providers':self.cfg['credential_provider_ids'],
+            'preferred_endpoints':[(r['candidate'],r['service']) for r in (self.current or {}).get('routes',[])
+                                   if r.get('candidate')], 'stop':stop}
+        if self.scanner is staged_scan:
+            def progress(summary):
+                atomic_json(self.state/'scan-progress.json',summary)
+                event('scan_progress',**summary)
+            scan_options.update(self.cfg.get('scan_strategy',{}))
+            scan_options.update({'progress':progress,'cycle':self.scan_cycle})
+        report=self.scanner(catalogue['candidates'],self.services,**scan_options)
+        self.scan_cycle+=1
         if stop and stop.is_set():raise InterruptedError()
         plan=select(report,self.services,catalogue['candidates'],self.current,self.cfg.get('pinned_provider'))
         plan['policy_digest']=self.policy_digest
@@ -132,6 +154,7 @@ class Controller:
             try:self.once(offline=offline,apply=True,stop=stop)
             except Exception as exc:
                 # Do not leak request bodies, credentials or URLs through exception messages.
+                atomic_json(self.state/'scan-progress.json',{'phase':'error','error_type':type(exc).__name__,'timestamp':time.time()})
                 event('selection_cycle_error',error=type(exc).__name__)
             if stop.wait(max(1,self.cfg['scan_interval_seconds']-(self.clock()-started))):break
 
@@ -153,7 +176,11 @@ def main():
                 'preferred':[s['id'] for s in services if s['mode']=='preferred'],'authenticated':cfg['authorized_services']}));return
         controller=Controller(cfg,services,args.state_dir)
         if args.action=='status':
-            print(json.dumps(controller.current or {'status':'NO_VALID_SERVICE_PLAN'},indent=2));return
+            if controller.current:
+                print(json.dumps(controller.current,indent=2));return
+            try:progress=read_json(controller.state/'scan-progress.json')
+            except (OSError,ValueError):progress={'phase':'not_started'}
+            print(json.dumps({'status':'NO_VALID_SERVICE_PLAN','scan':progress},indent=2));return
         if args.action=='scan':
             plan,reason=controller.once(args.offline,args.refresh,apply=False)
             print(json.dumps({'applicable':plan['applicable'],'missing_required':plan['missing_required'],
