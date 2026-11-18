@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import shutil
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -99,6 +100,8 @@ class DNSClientTests(unittest.TestCase):
     def test_apply_and_rollback_preserves_original_docker_resolver(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
+            (root/'config').mkdir()
+            shutil.copyfile('config/services.json',root/'config'/'services.json')
             path=root/'containers'/'web'/'resolv.conf'
             path.parent.mkdir(parents=True)
             original='search karakeep_default\nnameserver 127.0.0.11\noptions ndots:0\n'
@@ -131,6 +134,8 @@ class DNSClientTests(unittest.TestCase):
     def test_failed_gateway_check_keeps_original_resolver(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
+            (root/'config').mkdir()
+            shutil.copyfile('config/services.json',root/'config'/'services.json')
             path=root/'containers'/'web'/'resolv.conf'
             path.parent.mkdir(parents=True)
             original='nameserver 127.0.0.11\n'
