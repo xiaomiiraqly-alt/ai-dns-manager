@@ -80,11 +80,11 @@ def prepare_state_directory(state, image):
     return mount
 
 
-def install(name, port, config, service_aware=False, secrets_file=None):
+def install(name, port, config, service_aware=False, secrets_file=None, archive_rollback=False):
     backup = name + '-rollback'
     old = require_owned(name)
-    if require_owned(backup):
-        raise ValueError('A rollback snapshot already exists; inspect it before another update: ' + backup)
+    if require_owned(backup) and not archive_rollback:
+        raise ValueError('A rollback snapshot already exists; use --archive-rollback to retain it safely')
     local = ROOT / 'local'
     local.mkdir(mode=0o700, exist_ok=True)
     if config is None:
@@ -148,6 +148,12 @@ def install(name, port, config, service_aware=False, secrets_file=None):
         command=['serve','--config','/app/config/router.json','--state-dir','/state',*command]
     moved, attempting_new = False, False
     try:
+        if archive_rollback and require_owned(backup):
+            archive=backup+'-'+stamp
+            if require_owned(archive):
+                raise ValueError('An archived snapshot already exists with this name')
+            docker('rename', backup, archive)
+            print('Preserved older rollback as:', archive)
         if old:
             docker('stop', name)
             docker('rename', name, backup)
@@ -198,6 +204,7 @@ def main():
     p.add_argument('--port', type=int, default=5353)
     p.add_argument('--config', type=Path)
     p.add_argument('--service-aware', action='store_true', help='Run the service selector, auto-updates and monitor, still loopback-only')
+    p.add_argument('--archive-rollback', action='store_true', help='Preserve an older rollback under a timestamped name before upgrading')
     p.add_argument('--secrets-file', type=Path, help='Optional local Docker env-file outside the repository; never uploaded')
     args = p.parse_args()
     if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}', args.name) or not 1024 <= args.port <= 65535:
@@ -209,7 +216,7 @@ def main():
         require_owned(args.name)
         require_owned(args.name + '-rollback')
         if args.action == 'install':
-            install(args.name,args.port,args.config,args.service_aware,args.secrets_file)
+            install(args.name,args.port,args.config,args.service_aware,args.secrets_file,args.archive_rollback)
         elif args.action == 'rollback':
             rollback(args.name)
         elif args.action == 'status':
