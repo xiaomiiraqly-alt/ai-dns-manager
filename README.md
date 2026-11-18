@@ -2,9 +2,19 @@
 
 [![Tests](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml)
 
-**Experimental v0.4 — service-aware Smart DNS selection for Linux, Docker and private VPN deployments.**
+**Experimental v0.5 — bounded service-aware Smart DNS selection for Linux, Docker and private VPN deployments.**
 
 The original workflow is restored: discover providers → ask for actual DNS answers → check each selected AI service through those answers → rank by required/preferred coverage → select a primary and same-service reserves → verify again periodically. DNS availability alone is not an AI availability test.
+
+## VPS performance fix (v0.5)
+
+The first service-aware scan is now **staged**, instead of immediately scheduling every provider × AI-service pair. The previously observed 136 DNS endpoints × 44 services would have required 5,984 service-level checks before a plan could be formed.
+
+The new defaults use one short DNS prefilter per endpoint, up to **12** full tests per required service, and up to **4** providers for the remaining preferred services. Each deep phase has an independent time budget, with at most eight concurrent workers. A result not tested is `NOT_SCANNED`, not reported as broken. The result includes a `scan-progress.json` with `phase`, `required_ok`, `required_missing` and evaluation counts. No API key is needed to conduct the anonymous round.
+
+**Running Docker container:** from the host read `local/service-state/scan-progress.json`; the container uses `/state`, not `/app/data/service-manager`. `healthy` still means only UDP/TCP listener health, not that AI routes exist. See [staged scanner design](docs/service-selection.md#bounded-staged-scanner-v05).
+
+This intentionally trades exhaustive first-pass coverage for a bounded, rotating candidate frontier; provider coverage expands over repeated rounds. It does not prove that Gemini authenticated generation is regionally available.
 
 ## New service-aware mode
 
