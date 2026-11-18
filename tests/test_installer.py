@@ -128,3 +128,32 @@ class ServiceAwareInstallerTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'symlink'):
                     install.prepare_state_directory(state,'image:test')
             docker.assert_not_called()
+
+
+class UpgradeArchiveTests(unittest.TestCase):
+    def test_archive_existing_rollback_preserves_old_and_new_snapshots(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            (root/'config').mkdir()
+            (root/'config/router.json').write_text('{}')
+            owned={'Config':{'Labels':{install.LABEL:'true'}}}
+            states={'pilot':copy.deepcopy(owned), 'pilot-rollback':copy.deepcopy(owned)}
+            calls=[]
+            def fake_docker(*args,**kwargs):
+                calls.append(args)
+                if args[0]=='rename':
+                    states[args[2]]=states.pop(args[1])
+                if args[:2]==('run','-d'):
+                    states[args[args.index('--name')+1]]=copy.deepcopy(owned)
+                return ''
+            with patch.object(install,'ROOT',root),\
+                 patch.object(install,'inspect',side_effect=lambda name:states.get(name)),\
+                 patch.object(install,'docker',side_effect=fake_docker),\
+                 patch.object(install.shutil,'which',return_value=None),\
+                 patch.object(install.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+                install.install('pilot',5353,None,archive_rollback=True)
+            self.assertIn('pilot',states)
+            self.assertIn('pilot-rollback',states)
+            archived=[x for x in states if x.startswith('pilot-rollback-')]
+            self.assertEqual(len(archived),1)
+            self.assertFalse(any(a[0]=='rm' and archived[0] in a for a in calls))
