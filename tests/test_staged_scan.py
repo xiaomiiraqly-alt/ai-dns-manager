@@ -61,6 +61,16 @@ class StagedScanTests(unittest.TestCase):
         self.assertNotIn('service-0',r['unscanned_services'])
         self.assertFalse(any(x['service']=='service-1' for x in r['results']))
 
+    def test_unscanned_service_not_reported_as_verified_unavailable(self):
+        from ai_dns_manager.selection import select
+        mandatory, optional = service(0,'required'), service(1)
+        report = staged_scan(candidates(10), [mandatory,optional],
+                             dns_exchange=lambda *a:(_ for _ in ()).throw(TimeoutError()))
+        proposal = select(report,[mandatory,optional],candidates(10))
+        self.assertFalse(proposal['applicable'])
+        self.assertEqual([route['status'] for route in proposal['routes']],
+                         ['NOT_SCANNED','NOT_SCANNED'])
+
     def test_failed_required_never_claims_healthy_route(self):
         def scanner(cs,ss,**kw):
             return {'results':[dict(x,eligible=False,status='REGION_BLOCKED',evidence=0)
