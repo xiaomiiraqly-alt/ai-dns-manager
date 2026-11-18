@@ -13,7 +13,7 @@ from .transports import Upstream,exchange
 from .policy import ProviderPool,event
 from .selection import select,Stability
 from .service_schema import load_services
-from .service_scan import scan
+from .service_scan import scan,acceptable
 from .staged_scan import staged_scan
 from .server import ThreadedUDP,ThreadedTCP,UDPHandler,TCPHandler
 from . import wire
@@ -92,14 +92,31 @@ class ServicePool:
         self.base=ProviderPool(base);self.base_config=copy.deepcopy(base)
         self.timeout=self.base.timeout;self.slots=self.base.slots;self.lock=threading.RLock()
         self.clock=clock;self.ttl=ttl;self.pools={};self.checked_at=0
+        self.definitions={s['id']:s for s in services}
         self.domains=sorted([(d,s['id']) for s in services if s['mode']!='off' for d in s['routes']],key=lambda x:len(x[0]),reverse=True)
     def allowed(self,ip):return self.base.allowed(ip)
     def group_for(self,domain):return domain
     def install(self,plan):
-        if not plan.get('applicable') or plan.get('missing_required'):raise ValueError('Incomplete required coverage')
+        if not plan.get('applicable') or plan.get('missing_required'):
+            raise ValueError('Incomplete required coverage')
+        by_service={r['service']:r for r in plan['routes']}
+        for sid,service in self.definitions.items():
+            if service['mode']!='required':
+                continue
+            route=by_service.get(sid)
+            if not route or not route.get('candidate') or not acceptable(service,route):
+                raise ValueError('Mandatory route lacks required authenticated evidence: '+sid)
         pools={}
         for route in plan['routes']:
             if not route.get('candidate'):continue
+            service=self.definitions.get(route['service'])
+            if not service or service['mode']=='off':
+                raise ValueError('Route for unknown or disabled service')
+            if not acceptable(service,route):
+                raise ValueError('Unverified service route must not be installed: '+route['service'])
+            for backup in route['backups']:
+                if not backup.get('candidate') or not acceptable(service,backup):
+                    raise ValueError('Unverified backup must not be installed: '+route['service'])
             upstreams=[route['upstream']]+[b['upstream'] for b in route['backups']]
             cfg={**self.base_config,'default_group':'selected','groups':{'selected':upstreams},'rules':[],'health_interval_seconds':0}
             pools[route['service']]=ProviderPool(cfg)
@@ -133,6 +150,22 @@ class Controller:
             if not cfg['authorized_services'] and saved.get('policy_digest')==self.policy_digest and 0<=clock()-saved['checked_at']<=cfg['route_ttl_seconds']:
                 self.pool.install(saved);self.current=saved
         except (OSError,ValueError,KeyError,TypeError):pass
+    def retire_unverified_snapshot(self):
+        """Serve startup only: preserve old on-disk plan, never present it as active.
+
+        Authenticated generation proofs cannot survive a process restart as
+        current evidence. An incompatible legacy plan (e.g. Comss AUTH_GATE)
+        is archived *before* new scans, not silently reused.
+        """
+        if self.current is not None:
+            return
+        old=self.state/'active-plan.json'
+        if not old.exists():
+            return
+        archive=self.state/('unverified-plan-'+str(time.time_ns())+'.json')
+        old.rename(archive)
+        event('old_plan_archived',reason='requires_fresh_verification')
+
     def once(self,offline=False,refresh=False,apply=False,stop=None):
         atomic_json(self.state/'scan-progress.json',{'phase':'provider_catalogue','timestamp':time.time()})
         def fetch(url):
@@ -204,11 +237,34 @@ def main():
             print(json.dumps({'services':len(services),'required':[s['id'] for s in services if s['mode']=='required'],
                 'preferred':[s['id'] for s in services if s['mode']=='preferred'],'authenticated':cfg['authorized_services']}));return
         controller=Controller(cfg,services,args.state_dir)
+        if args.action=='serve':
+            controller.retire_unverified_snapshot()
         if args.action=='status':
             if controller.current:
-                print(json.dumps(controller.current,indent=2));return
+                print(json.dumps({'status':'RESTORED_UNAUTHENTICATED_PLAN',
+                                  'plan':controller.current},indent=2));return
             try:progress=read_json(controller.state/'scan-progress.json')
             except (OSError,ValueError):progress={'phase':'not_started'}
+            try:
+                snapshot=read_json(controller.state/'active-plan.json',4194304)
+                valid=(snapshot.get('policy_digest')==controller.policy_digest
+                       and 0<=time.time()-snapshot.get('checked_at',0)<=cfg['route_ttl_seconds'])
+                if valid:
+                    # This process cannot inspect the running daemon's in-memory
+                    # routes. Report an eligible disk snapshot as such, not as
+                    # guaranteed live API health.
+                    for service in services:
+                        if service['mode']=='required':
+                            route=next((r for r in snapshot.get('routes',[])
+                                        if r.get('service')==service['id']),None)
+                            if not route or not acceptable(service,route):
+                                valid=False;break
+                if valid:
+                    print(json.dumps({'status':'LAST_APPLIED_DISK_SNAPSHOT',
+                                      'note':'Actual daemon routing and generation must be corroborated by recent logs',
+                                      'plan':snapshot,'scan':progress},indent=2));return
+            except (OSError,ValueError,TypeError,KeyError):
+                pass
             print(json.dumps({'status':'NO_VALID_SERVICE_PLAN','scan':progress},indent=2));return
         if args.action=='scan':
             plan,reason=controller.once(args.offline,args.refresh,apply=False)
