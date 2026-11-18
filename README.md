@@ -16,6 +16,12 @@ python3 scripts/awg_dns_gateway.py install
 
 It binds DNS UDP/TCP port 53 to the **private** AmneziaWG server interface, and forwards to the already-running AI DNS Manager without changing host DNS, firewall, peer configs or VPN routing rules. Requires a recent applied `GENERATION_OK` Gemini plan and a free DNS port in the AWG namespace. Clients must **individually use the printed private DNS address** in their tunnel profiles; WireGuard does not push DNS configuration. For rollback run `python3 scripts/awg_dns_gateway.py uninstall`. See [AWG private DNS gateway](docs/awg-gateway.md) for exact scope and upgrade instructions.
 
+## Mandatory Gemini provider selection fix (v0.8.2)
+
+A live exit VPS exposed a second issue: **12 mandatory Gemini candidates were all `PROBE_NOT_AUTHORIZED` and zero real API requests were attempted**, even though the local credential allowlist included DNS-AI. The cause was a candidate frontier populated with providers not authorized for keyed tests; imported provider feeds could also merge away the locally trusted provider ID. No model/network conclusion can be drawn from a scan that sent zero API calls.
+
+The updated manager now preserves local provider identity, tries only explicitly authorized DNS providers for required authenticated generation, and retries failed trusted DNS prefilter attempts within a bounded deadline. A real authenticated `GENERATION_OK` is **still mandatory** before activating Gemini routes or the AWG private gateway. If DNS-AI itself cannot answer or authenticated generation fails, the deployment remains fail-closed and reports `trusted_candidates` and `trusted_dns_live` without sending keys to unapproved endpoints.
+
 ## Karakeep integration over existing AWG tunnel
 
 A **zero-Compose-recreation split-DNS installer** is now available for the Karakeep VPS:
