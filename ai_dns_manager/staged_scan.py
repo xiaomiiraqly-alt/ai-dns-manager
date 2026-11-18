@@ -178,7 +178,8 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
     scanned_ids = {r['service'] for r in reports}
     unscanned = [s['id'] for s in active if s['id'] not in scanned_ids]
     summary = {'candidates': len(candidates), 'dns_live': len(responsive),
-               'required_tested': required_tested,
+               'required_tested': required_tested, 'required_ok': all_required,
+               'required_missing': [s['id'] for s in required if s['id'] not in tested_required],
                'preferred_tested': preferred_tested,
                'total_evaluations': len(reports),
                'elapsed_seconds': round(clock()-start, 2),
