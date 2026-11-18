@@ -76,13 +76,19 @@ class VerifiedGeminiTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'generation evidence'):
                 settings(p)
 
-    def _scan(self, environment, allowed=('reference','comss','dns-ai','webshift')):
+    def _scan(self, environment, allowed=('reference','comss','dns-ai','webshift'), successful_ips=('201.58.191.60',)):
         responses = []
+        def simulated_gateway(host, ip, path, method, headers, body, timeout):
+            if headers.get('Authorization') and ip in successful_ips:
+                return 200, b'{"choices":[{"message":{"content":"OK"}}]}', '', ip
+            if headers.get('Authorization'):
+                return 400, b'[{"error":{"message":"User location is not supported for the API use."}}]', '', ip
+            return gateway(host, ip, path, method, headers, body, timeout)
         def http(service, ip, **kwargs):
             kwargs['environment']=environment
             result=probe_http(service,ip,requester=lambda *args:(responses.append(
                 {'ip':args[1], 'authenticated':bool(args[4].get('Authorization'))})
-                or gateway(*args)),**kwargs)
+                or simulated_gateway(*args)),**kwargs)
             return result
         def wrapped(cs,ss,**kwargs):
             return scan(cs,ss,dns_exchange=dns_reply,http_probe=http,**kwargs)
@@ -109,6 +115,28 @@ class VerifiedGeminiTests(unittest.TestCase):
         self.assertEqual(plan['routes'][0]['backups'],[])
         self.assertTrue(any(c['authenticated'] for c in calls))
         self.assertNotIn('fake-local-test-key',json.dumps(result))
+
+    def test_automatic_failover_chooses_other_verified_generation(self):
+        result, _=self._scan({'GEMINI_API_KEY':'fake-key','GEMINI_MODEL':'fake-model'},
+                              allowed=('dns-ai','webshift'),
+                              successful_ips=('31.31.207.68',))
+        proposal=select(result,[GEMINI],CANDIDATES)
+        self.assertTrue(proposal['applicable'])
+        self.assertEqual(proposal['routes'][0]['provider_id'],'webshift')
+        self.assertEqual(proposal['routes'][0]['status'],'GENERATION_OK')
+        self.assertEqual(proposal['routes'][0]['backups'],[])
+
+    def test_backup_is_only_a_verified_generator(self):
+        result, _=self._scan({'GEMINI_API_KEY':'fake-key','GEMINI_MODEL':'fake-model'},
+                              allowed=('dns-ai','webshift','comss'),
+                              successful_ips=('201.58.191.60','31.31.207.68'))
+        proposal=select(result,[GEMINI],CANDIDATES)
+        self.assertTrue(proposal['applicable'])
+        primary=proposal['routes'][0]
+        self.assertEqual(primary['status'],'GENERATION_OK')
+        self.assertEqual(len(primary['backups']),1)
+        self.assertNotEqual(primary['backups'][0]['provider_id'],primary['provider_id'])
+        self.assertNotIn('comss',{primary['provider_id'],primary['backups'][0]['provider_id']})
 
     def test_key_absence_cannot_mark_api_as_available(self):
         result, calls=self._scan({})
