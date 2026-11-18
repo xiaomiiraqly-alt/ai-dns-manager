@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 — verified-generation provider selection and safer upgrades
+
+- Require `GENERATION_OK` and evidence level 4 for mandatory Gemini API; a fake-key `AUTH_GATE` cannot select or renew a Gemini route.
+- Migrate legacy local manager settings without overwriting the original: authorize Gemini checks, prioritize trusted DNS-AI, and avoid unneeded reference API calls.
+- Reserve mandatory scan capacity for approved authenticated providers even with many previous routes; keep previous healthy route priority bounded.
+- Support Karakeep's OpenAI-compatible Gemini environment-variable aliases without exposing credentials.
+- Automatically reuse the private root-owned `/etc/ai-dns-manager/gemini.env` secrets file on subsequent Docker installs.
+- Allow deliberate `--archive-rollback` to preserve an existing rollback container under a timestamped name instead of deleting it.
+- Add synthetic end-to-end tests reproducing the observed Comss/WebShift region refusals versus successful DNS-AI generation, including failover, backup eligibility and missing keys.
+- Explicitly separate DNS listener health, model-generation proof, and the still-unconfigured VPN client DNS route.
+
 ## 0.5.1 — idempotent service-state permissions during reinstall
 
 - Fix repeated `install.py install --service-aware` failing with `PermissionError: /state` after the state directory was handed to UID/GID 65534.
