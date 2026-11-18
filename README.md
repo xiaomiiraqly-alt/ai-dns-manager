@@ -52,7 +52,7 @@ python3 -m ai_dns_manager.manager validate
 python3 -m ai_dns_manager.manager scan --state-dir data/service-manager
 ```
 
-Outputs: `catalogue.json`, `service-report.json`, `proposed-plan.json`. `scan` **does not activate** the plan. Default: Gemini API is required, other starter profiles preferred, no real API credentials used. Edit `config/manager.json` to preserve your own mandatory/desired set. [Full configuration and evidence guide](docs/service-selection.md).
+Outputs: `catalogue.json`, `service-report.json`, `proposed-plan.json`. `scan` **does not activate** the plan. Default: Gemini API requires verified real generation, other starter profiles are preferred; credentials must first be provisioned securely. Edit `config/manager.json` to preserve your own mandatory/desired set. [Full configuration and evidence guide](docs/service-selection.md).
 
 To install the continuous service-aware pilot **after reviewing the plan** (Docker Engine only; Compose not needed):
 
@@ -62,7 +62,7 @@ python3 install.py install --service-aware
 
 The daemon refreshes provider data when due and periodically rechecks services. It publishes only host loopback `127.0.0.1:5353`. It does not connect itself to all VPN clients, alter system DNS, disable IPv6 on the host or restart AmneziaWG. Its local healthcheck proves process/listener health only; inspect the service report for actual AI results.
 
-**Privacy/cost:** real API tests are off by default. They need explicit service and DNS-provider allowlists plus local environment keys. Keys are never put into GitHub, provider feeds or JSON reports. Repeated generation checks may incur costs. See [security policy](SECURITY.md).
+**Privacy/cost:** Gemini generation is authorized by the local mandatory-service policy but cannot run without a securely provisioned key/model. Other real API tests remain opt-in. The credential-provider allowlist is explicit. Keys are never put into GitHub, provider feeds or JSON reports. Repeated generation checks may incur costs. See [security policy](SECURITY.md).
 
 ## Russian / Русский
 
