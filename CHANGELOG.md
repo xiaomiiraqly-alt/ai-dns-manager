@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2 — restore zero-request Gemini scans without weakening credentials
+
+- Fix a live exit-VPS failure where all 12 mandatory candidates were `PROBE_NOT_AUTHORIZED` and `api_requests=0`. For required authenticated generation, scan only DNS endpoints whose **provider ID is explicitly credential-approved**, instead of exhausting the entire required frontier on endpoints that cannot use the API key.
+- Retry a bounded rotating set of approved DNS transports with longer DNS timeouts after transient fast-prefilter failures. A timeout is never promoted into verified service availability.
+- Protect local trusted-provider identity against downloaded feed ID/endpoint aliases: locally configured provider endpoints take precedence over bundled and fetched alternatives, preventing both trust loss and accidental credential authorization of untrusted upstreams.
+- Include `trusted_candidates` and `trusted_dns_live` in scan progress. If no approved provider responds, mandatory Gemini remains unavailable and no private AWG gateway is exposed.
+- Add six offline regressions covering historical 0-request failure, trusted DNS retries, provider-feed collision resistance, legitimate anonymous discovery and fail-closed behavior.
+
 ## 0.8.1 — continuously renewed Gemini evidence and automatic gateway activation
 
 - Refresh the evidence timestamp of an **unchanged, actually generation-verified** mandatory Gemini route on each successful scan, even while optional service changes wait for switch confirmation.
