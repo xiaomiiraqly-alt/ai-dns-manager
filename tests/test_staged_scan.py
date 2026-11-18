@@ -50,6 +50,26 @@ class StagedScanTests(unittest.TestCase):
         self.assertEqual([p['phase'] for p in checkpoints],
                          ['dns_prefilter','required_services','preferred_services','complete'])
 
+    def test_bounded_matrix_with_real_scanner_136_by_44(self):
+        requests = []
+        def fake_dns(query, upstream, *args):
+            return answer(query, ip='8.8.4.4')
+        def fake_http(service, ip, **kwargs):
+            requests.append((service['id'],ip))
+            return {'status':'AUTH_GATE','evidence':1,'latency_ms':1,
+                    'tls_valid':True,'remote_ip':ip}
+        def real_scanner(cs, ss, **kwargs):
+            return scan(cs, ss, dns_exchange=fake_dns,
+                        http_probe=fake_http, **kwargs)
+        report = staged_scan(candidates(136),
+                             [service(0,'required')]+[service(i) for i in range(1,44)],
+                             scanner=real_scanner, dns_exchange=fake_dns)
+        self.assertEqual(len(report['results']),report['phase_stats']['total_evaluations'])
+        self.assertLessEqual(len(report['results']),12+4*43)
+        # Memoization deduplicates repeated addresses inside each phase.
+        self.assertLessEqual(len(requests),44)
+        self.assertTrue(report['phase_stats']['required_ok'])
+
     def test_required_route_can_be_found_without_optional_route_success(self):
         def scanner(cs,ss,**kw):
             if ss[0]['mode']=='preferred':
