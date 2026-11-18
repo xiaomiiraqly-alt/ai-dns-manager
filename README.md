@@ -16,6 +16,18 @@ python3 scripts/awg_dns_gateway.py install
 
 It binds DNS UDP/TCP port 53 to the **private** AmneziaWG server interface, and forwards to the already-running AI DNS Manager without changing host DNS, firewall, peer configs or VPN routing rules. Requires a recent applied `GENERATION_OK` Gemini plan and a free DNS port in the AWG namespace. Clients must **individually use the printed private DNS address** in their tunnel profiles; WireGuard does not push DNS configuration. For rollback run `python3 scripts/awg_dns_gateway.py uninstall`. See [AWG private DNS gateway](docs/awg-gateway.md) for exact scope and upgrade instructions.
 
+## Karakeep integration over existing AWG tunnel
+
+A **zero-Compose-recreation split-DNS installer** is now available for the Karakeep VPS:
+
+```bash
+python3 scripts/karakeep_split_dns.py install --gateway 10.8.1.1
+```
+
+Use the actual private address printed by the egress `awg_dns_gateway.py install` command. The client-side helper joins `karakeep-awg-client`'s existing network namespace without restarting it; creates a localhost-only DNS proxy for `karakeep-web-1` and `karakeep-chrome-1`; routes mandatory AI services through the egress manager; and preserves ordinary Docker service DNS (including `meilisearch`). It saves the original per-container resolvers for `uninstall`. Gateway readiness is required before any resolver file is changed. No application data, VPN peer, firewall, or host DNS is modified.
+
+**This applies to the running containers only; Docker recreation can reset resolver settings.** See [Karakeep split-DNS deployment and recovery](docs/karakeep-split-dns.md).
+
 ## Gemini real-generation routing (v0.6)
 
 A live deployment exposed a false positive: **Comss**, WebShift and ZombieDNS returned `AUTH_GATE` when checked with an invalid key, but authenticated Gemini generation returned `REGION_BLOCKED`. **DNS-AI** returned `GENERATION_OK` via `201.58.191.60` in the Karakeep network test.
