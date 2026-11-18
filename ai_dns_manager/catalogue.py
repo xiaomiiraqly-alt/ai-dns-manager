@@ -163,7 +163,15 @@ def merge_catalogues(entries,excluded=(),retired=()):
         item=copy.deepcopy(item)
         item['ipv4']=[ip for ip in item['ipv4'] if ip not in retired]
         tokens=lambda row:set(row['ipv4']+row['hosts']+row['doh']+row.get('dot',[]))
-        matches=[r for r in merged if r['id']==item['id'] or tokens(r)&tokens(item)]
+        # Local/bundled provider identities must never absorb extra endpoints
+        # from downloaded feeds. API-key allowlists refer to provider IDs:
+        # cross-origin merging would silently *grant* credential authority to
+        # arbitrary third-party addresses, or steal the trusted provider ID.
+        def safe_merge(other):
+            if 'local' in item['sources'] or 'local' in other['sources'] or 'bundled' in item['sources'] or 'bundled' in other['sources']:
+                return item['sources'][0]==other['sources'][0] and item['id']==other['id']
+            return item['id']==other['id'] or bool(tokens(other)&tokens(item))
+        matches=[r for r in merged if safe_merge(r)]
         for match in matches:
             merged.remove(match)
             for field in ('ipv4','hosts','doh','dot','sources'):
@@ -225,9 +233,17 @@ def build_catalogue(settings,cache_dir,bundled,offline=False,force=False,fetcher
         remote=list(ex.map(lambda s:update_source(s,cache_dir,offline,force,fetcher),sources))
     seed=parse_feed(Path(bundled).read_bytes(),'aidns-v1','bundled')
     retired=set(seed['retired'])
-    entries=list(seed['providers'])
-    for doc in remote:retired.update(doc['retired']);entries+=doc['providers']
-    for row in settings.get('custom_providers',[]):entries.append(normalize_provider(row,'local'))
+    # Caller-owned local definitions have first claim on both identity and
+    # identical endpoint configurations. Remote feeds must not rename or
+    # extend a locally trusted provider (notably the Gemini dns-ai allowlist).
+    local=[normalize_provider(row,'local') for row in settings.get('custom_providers',[])]
+    local_ids={row['id'] for row in local}
+    seed_rows=[p for p in seed['providers'] if p['id'] not in local_ids]
+    protected_ids=local_ids|{p['id'] for p in seed_rows}
+    entries=local+seed_rows
+    for doc in remote:
+        retired.update(doc['retired'])
+        entries.extend(p for p in doc['providers'] if p['id'] not in protected_ids)
     exclusions=settings.get('exclude_providers',[])
     # Exclude by endpoint too, so a duplicate source cannot re-enable an explicitly excluded provider.
     blocked=set(settings.get('exclude_addresses',[]))|retired

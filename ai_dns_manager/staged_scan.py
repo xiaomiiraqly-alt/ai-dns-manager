@@ -116,6 +116,14 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
     required = [s for s in active if s['mode'] == 'required']
     preferred = [s for s in active if s['mode'] == 'preferred']
     target = (required or preferred)
+    # When every mandatory API explicitly requires a keyed proof, do not
+    # waste its entire scarce frontier on providers forbidden to use keys.
+    # This is NOT an expansion of credential authority: only configured
+    # provider IDs may be deep-tested with credentials.
+    keyed_required = bool(required) and all(
+        s['id'] in authorized and s.get('auth') and s['minimum_evidence'] in ('authenticated','generation')
+        for s in required)
+    trusted_ids = set(credential_providers) if keyed_required else set()
     start = clock()
     deadline = start + round_budget
     _safe_progress(progress, 'dns_prefilter', candidates=len(candidates),
@@ -132,13 +140,13 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
     # hostnames still undergo a full DNS/HTTPS test on the selected frontier.
     probe_domain = target[0]['domain']
     packet = wire.make_query(probe_domain)
-    def probe(candidate):
+    def probe(candidate, timeout_override=None):
         if (stop and stop.is_set()) or clock() >= deadline:
             return None
         began = clock()
         try:
             answer = dns_exchange(packet, Upstream.parse(candidate['upstream']),
-                                  min(dns_timeout, max(.01, deadline-clock())))
+                                  min(timeout_override or dns_timeout, max(.01, deadline-clock())))
             if wire.header(answer)[1] & 15:
                 return None
             addresses = tuple(public_ip(ip) for ip in wire.a_records(answer))
@@ -151,11 +159,31 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
     with ThreadPoolExecutor(max_workers=min(workers, 8)) as executor:
         checked = list(executor.map(probe, candidates))
     responsive = [r for r in checked if r is not None]
+    if keyed_required:
+        # Transient timeout at the cheap 1.5s DNS prefilter must not exclude
+        # the ONLY providers authorized for authenticated generation. Retry
+        # a bounded rotating subset with a longer timeout before selecting
+        # the mandatory scan frontier. Failed probes still cannot qualify.
+        already={r['candidate']['id'] for r in responsive}
+        retry=[c for c in candidates if c['provider_id'] in trusted_ids and c['id'] not in already]
+        retry_budget=min(len(retry),max(16,required_candidates*2))
+        if retry and retry_budget and deadline-clock() >= 1 and not (stop and stop.is_set()):
+            offset=(cycle*retry_budget)%len(retry)
+            rotated=(retry[offset:]+retry[:offset])[:retry_budget]
+            with ThreadPoolExecutor(max_workers=min(workers,8)) as executor:
+                recovered=list(executor.map(lambda c:probe(c,min(5.0,max(dns_timeout*2,3.0))),rotated))
+            responsive.extend(r for r in recovered if r is not None)
     previous_ids = [c for c, sid in preferred_endpoints if sid in {s['id'] for s in required}]
-    frontier = _frontier(responsive, required_candidates, cycle, previous_ids,
-                         priority_provider_ids=[p for p in credential_providers if p!='reference'] if authorized else ())
+    eligible_prefilter = ([r for r in responsive if r['candidate']['provider_id'] in trusted_ids]
+                          if keyed_required else responsive)
+    frontier = _frontier(eligible_prefilter, required_candidates, cycle, previous_ids,
+                         priority_provider_ids=list(credential_providers) if keyed_required else
+                         [p for p in credential_providers if p!='reference'] if authorized else ())
     _safe_progress(progress, 'required_services', candidates=len(candidates),
                    dns_live=len(responsive), selected=len(frontier),
+                   trusted_dns_live=len(eligible_prefilter) if keyed_required else None,
+                   trusted_candidates=sum(c['provider_id'] in trusted_ids for c in candidates)
+                   if keyed_required else None,
                    required=len(required), preferred=len(preferred))
     reports = []
     remaining_api = max_api_requests
@@ -201,6 +229,9 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
     scanned_ids = {r['service'] for r in reports}
     unscanned = [s['id'] for s in active if s['id'] not in scanned_ids]
     summary = {'candidates': len(candidates), 'dns_live': len(responsive),
+               'trusted_dns_live': len(eligible_prefilter) if keyed_required else None,
+               'trusted_candidates': sum(c['provider_id'] in trusted_ids for c in candidates)
+               if keyed_required else None,
                'required_tested': required_tested, 'required_ok': all_required,
                'required_missing': [s['id'] for s in required if s['id'] not in tested_required],
                'preferred_tested': preferred_tested,
