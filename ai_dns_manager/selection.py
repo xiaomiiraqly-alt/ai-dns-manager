@@ -46,7 +46,9 @@ def select(report,services,candidates,previous=None,pinned_provider=None):
         row=rows[main['id'],service['id']]
         routes.append({'service':service['id'],'domains':service['routes'],'mode':service['mode'],
             'status':row['status'],'evidence':row['evidence'],'candidate':main['id'],'provider_id':main['provider_id'],
-            'upstream':main['upstream'],'backups':[{'candidate':c['id'],'provider_id':c['provider_id'],'upstream':c['upstream']} for c in reserves],
+            'upstream':main['upstream'],'backups':[{'candidate':c['id'],'provider_id':c['provider_id'],'upstream':c['upstream'],
+                        'status':rows[c['id'],service['id']]['status'],
+                        'evidence':rows[c['id'],service['id']]['evidence']} for c in reserves],
             'tested_domain':service['domain'],'sampled_addresses':row['dns'].get('addresses',[]),'partial_address_coverage':row.get('partial_address_coverage',False)})
     return {'schema_version':1,'checked_at':report['checked_at'],'applicable':not missing,'missing_required':missing,
             'primary':primary['id'] if primary else None,'backup':backup['id'] if backup else None,
