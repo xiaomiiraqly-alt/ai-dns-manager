@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 — stale-plan and fallback evidence hardening
+
+- Persist independent verification status and evidence for each selected backup.
+- Require every installed mandatory route and fallback to satisfy the service's configured evidence threshold; refuse forged/stale AUTH_GATE plans for required Gemini generation.
+- Archive incompatible or unauthenticated active plans on service startup rather than leaving an old Comss AUTH_GATE snapshot labelled active.
+- Distinguish an observable disk snapshot from confirmed live in-memory routing in the manager status command.
+- Add offline regression tests for invalid primary routes, region errors, invalid backups, verified backups and safe archiving of legacy plans.
+
 ## 0.6.0 — verified-generation provider selection and safer upgrades
 
 - Require `GENERATION_OK` and evidence level 4 for mandatory Gemini API; a fake-key `AUTH_GATE` cannot select or renew a Gemini route.
