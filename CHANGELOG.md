@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — bounded staged service-aware scanner
+
+- Replace the 136-endpoint × 44-service first-round matrix with DNS prefilter, required-service validation and a small rotating optional-service frontier.
+- Default to at most 12 candidates per required service, four for preferred, and eight workers, with bounded DNS/HTTP timeouts and per-phase budgets.
+- Record `scan-progress.json` after each phase, including which mandatory services lack a verified route.
+- Distinguish `NOT_SCANNED` from `UNAVAILABLE` without accepting untested candidates.
+- Preserve authentication opt-in, per-service evidence levels, current route preference and fail-closed mandatory routing.
+- Clarify Docker listener health versus AI route readiness in the installer.
+- Add offline scale and negative-path regressions using the actual scanner under a 136 × 44 synthetic catalogue.
+
 ## 0.4.0 — service-aware selection (experimental)
 
 - Add 44 extensible web/API profiles with required/preferred/off modes and explicit evidence thresholds.
