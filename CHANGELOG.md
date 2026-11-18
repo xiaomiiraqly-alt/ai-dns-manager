@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 — private AmneziaWG DNS gateway (opt-in)
+
+- Add an opt-in DNS UDP/TCP gateway on the existing AWG container's **private** interface port 53, forwarding queries to AI DNS Manager.
+- Join the manager to the existing private AWG Docker network while preserving its default outbound route priority.
+- Fail closed without a recent actual `GENERATION_OK` Gemini plan; reject unowned existing containers, non-private WireGuard addresses, and stale gateway forwarding.
+- Never modify the host resolver, firewall, existing AWG container configuration, peer profiles or route tables; no published port 53.
+- Add uninstall/rollback command, source-level offline tests and deployment instructions, including explicit peer DNS requirements.
+
 ## 0.6.1 — stale-plan and fallback evidence hardening
 
 - Persist independent verification status and evidence for each selected backup.
