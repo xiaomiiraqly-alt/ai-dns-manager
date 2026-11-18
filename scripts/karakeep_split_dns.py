@@ -224,8 +224,6 @@ def provision(gateway,awg,targets):
     cfg_path=STATE/'router.json'
     cfg_path.write_text(json.dumps(cfg,indent=2)+'\n')
     cfg_path.chmod(0o644)
-    revision=command('version','--format','{{.Server.Version}}',check=False)
-    _=revision  # Keep Docker-version probing non-mutating.
     image='ai-dns-manager-karakeep:local'
     command('build','-t',image,str(ROOT),timeout=250)
     command('run','--rm','--network','none','--read-only','--cap-drop','ALL',
@@ -239,11 +237,11 @@ def provision(gateway,awg,targets):
             'containers':item['containers'],
             'original':item['before'],
             'applied':rewrite_resolv(item['before'])})
-    started=False
     changed=[]
     try:
+        # The Docker run may succeed before a health timeout. Always remove
+        # an owned partially started sidecar on failure.
         start_sidecar(image,awg,cfg_path)
-        started=True
         run_gateway_check(SIDECAR,gateway)
         run_local_check(SIDECAR)
         # Commit recovery metadata BEFORE the first resolver mutation.
@@ -266,7 +264,7 @@ def provision(gateway,awg,targets):
             except OSError:
                 print('WARNING: failed to restore '+row['path'],file=sys.stderr)
         (STATE/'manifest.json').unlink(missing_ok=True)
-        if started and owned(inspect(SIDECAR)):
+        if owned(inspect(SIDECAR)):
             command('rm','-f',SIDECAR,check=False)
         raise
 
@@ -284,11 +282,17 @@ def remove():
     # Preflight all paths and identities so uninstall cannot strand the other
     # container at the removed local DNS endpoint.
     current={}
+    sidecar=inspect(SIDECAR)
+    if sidecar and not owned(sidecar):
+        raise ValueError('Refusing to remove unmanaged DNS container')
     for row in data['resolvers']:
         p=Path(row['path'])
         if p.is_symlink() or not p.is_file():
             raise ValueError('Resolver was replaced; cannot safely restore '+str(p))
-        if p.read_text()!=row['applied']:
+        # The process may have stopped after writing only some files. Both
+        # the original and applied contents are safe states for recovery.
+        existing=p.read_text()
+        if existing not in (row['original'],row['applied']):
             raise ValueError('Resolver changed since install; refusing to overwrite '+str(p))
         for target in row['containers']:
             info=inspect(target['name'])
@@ -296,10 +300,8 @@ def remove():
                 raise ValueError('Container recreated since install; resolver restoration requires review: '+target['name'])
         current[p]=row['original']
     for path,original in current.items():
-        write_in_place(path,original)
-    sidecar=inspect(SIDECAR)
-    if sidecar and not owned(sidecar):
-        raise ValueError('Refusing to remove unmanaged DNS container')
+        if path.read_text()!=original:
+            write_in_place(path,original)
     if sidecar:
         command('rm','-f',SIDECAR)
     manifest_path.unlink()
