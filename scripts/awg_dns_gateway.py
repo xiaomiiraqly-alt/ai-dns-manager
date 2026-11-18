@@ -96,7 +96,9 @@ def ensure_manager_network(manager, network):
         raise ValueError('AI DNS Manager must be running before AWG integration')
     networks=current['NetworkSettings']['Networks'] or {}
     if network not in networks:
-        command('network','connect',network,manager)
+        # Preserve the manager's current Internet egress route when adding
+        # a second private bridge; Docker chooses default gateway by priority.
+        command('network','connect','--gw-priority','-1',network,manager)
         current=inspect(manager)
     address=current['NetworkSettings']['Networks'].get(network,{}).get('IPAddress')
     if not address or not ipaddress.ip_address(address).is_private:
@@ -116,6 +118,19 @@ def provision(manager, awg_container, network, interface):
     provider=active_generation(ROOT/'local'/'service-state')
     manager_ip=ensure_manager_network(manager,network)
     if current and current['State']['Running']:
+        # Detect stale forwarding after main manager container replacement.
+        mounts=current.get('Mounts') or []
+        source=next((m.get('Source') for m in mounts
+                     if m.get('Destination')=='/app/config/awg-gateway.json'),None)
+        if not source:
+            raise ValueError('Existing gateway has no owned forwarding configuration')
+        try:
+            old=json.loads(Path(source).read_text())
+            old_ip=old['groups']['manager'][0]['ip']
+        except (OSError,ValueError,KeyError,IndexError,TypeError) as exc:
+            raise ValueError('Cannot validate current gateway forwarding') from exc
+        if old_ip!=manager_ip:
+            raise ValueError('Gateway target changed after manager upgrade: run uninstall then install')
         print('Gateway is already running; no changes made.')
         print('VPN DNS address:',str(address.ip))
         print('Verified Gemini provider:',provider)
