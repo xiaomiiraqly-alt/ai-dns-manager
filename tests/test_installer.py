@@ -74,7 +74,8 @@ class ServiceAwareInstallerTests(unittest.TestCase):
             with patch.object(install,'ROOT',root),patch.object(install,'inspect',return_value=None),\
                  patch.object(install,'docker',side_effect=lambda *a,**k:calls.append(a)),\
                  patch.object(install.shutil,'which',return_value=None),\
-                 patch.object(install.subprocess,'run',return_value=SimpleNamespace(returncode=0)):
+                 patch.object(install.subprocess,'run',return_value=SimpleNamespace(returncode=0)),\
+                 patch.object(install,'state_permissions_ready',side_effect=[False,True]):
                 install.install('pilot',5353,None,service_aware=True)
             start=next(a for a in calls if a[:2]==('run','-d'))
             self.assertIn('ai_dns_manager.manager',start);self.assertIn('serve',start)
@@ -82,3 +83,48 @@ class ServiceAwareInstallerTests(unittest.TestCase):
             self.assertIn('127.0.0.1:5353:5353/udp',start)
             self.assertTrue(any('CHOWN' in a for a in calls))
             self.assertFalse(any('--privileged' in a or 'amnezia-awg2' in a for a in calls))
+
+    def test_existing_correct_state_skips_permission_helper(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp)/'service-state'
+            with patch.object(install,'state_permissions_ready',return_value=True),\
+                 patch.object(install,'docker') as docker:
+                mount=install.prepare_state_directory(state,'image:test')
+            self.assertIn(str(state),mount)
+            docker.assert_not_called()
+            self.assertTrue(state.is_dir())
+
+    def test_existing_wrong_owner_uses_both_narrow_capabilities(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp)/'service-state'
+            calls=[]
+            with patch.object(install,'state_permissions_ready',side_effect=[False,True]),\
+                 patch.object(install,'docker',side_effect=lambda *a,**k:calls.append(a)):
+                install.prepare_state_directory(state,'image:test')
+            self.assertEqual(len(calls),1)
+            args=calls[0]
+            self.assertIn('CHOWN',args)
+            self.assertIn('FOWNER',args)
+            self.assertIn('--network',args)
+            self.assertIn('none',args)
+            self.assertNotIn('--privileged',args)
+
+    def test_permission_repair_must_actually_fix_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp)/'service-state'
+            with patch.object(install,'state_permissions_ready',return_value=False),\
+                 patch.object(install,'docker') as docker:
+                with self.assertRaisesRegex(RuntimeError,'Failed to prepare'):
+                    install.prepare_state_directory(state,'image:test')
+            docker.assert_called_once()
+
+    def test_state_dir_symlink_is_refused_without_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state=Path(tmp)/'state'
+            target=Path(tmp)/'elsewhere'
+            target.mkdir()
+            state.symlink_to(target, target_is_directory=True)
+            with patch.object(install,'docker') as docker:
+                with self.assertRaisesRegex(ValueError,'symlink'):
+                    install.prepare_state_directory(state,'image:test')
+            docker.assert_not_called()
