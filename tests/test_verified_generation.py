@@ -79,9 +79,10 @@ class VerifiedGeminiTests(unittest.TestCase):
     def _scan(self, environment, allowed=('reference','comss','dns-ai','webshift')):
         responses = []
         def http(service, ip, **kwargs):
+            kwargs['environment']=environment
             result=probe_http(service,ip,requester=lambda *args:(responses.append(
                 {'ip':args[1], 'authenticated':bool(args[4].get('Authorization'))})
-                or gateway(*args)),environment=environment,**kwargs)
+                or gateway(*args)),**kwargs)
             return result
         def wrapped(cs,ss,**kwargs):
             return scan(cs,ss,dns_exchange=dns_reply,http_probe=http,**kwargs)
