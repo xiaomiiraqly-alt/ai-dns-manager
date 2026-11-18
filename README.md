@@ -2,9 +2,21 @@
 
 [![Tests](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/xiaomiiraqly-alt/ai-dns-manager/actions/workflows/tests.yml)
 
-**Experimental v0.5 — bounded service-aware Smart DNS selection for Linux, Docker and private VPN deployments.**
+**Experimental v0.6 — actual-generation-aware DNS selection for Linux, Docker and private VPN deployments.**
 
 The original workflow is restored: discover providers → ask for actual DNS answers → check each selected AI service through those answers → rank by required/preferred coverage → select a primary and same-service reserves → verify again periodically. DNS availability alone is not an AI availability test.
+
+## Gemini real-generation routing (v0.6)
+
+A live deployment exposed a false positive: **Comss**, WebShift and ZombieDNS returned `AUTH_GATE` when checked with an invalid key, but authenticated Gemini generation returned `REGION_BLOCKED`. **DNS-AI** returned `GENERATION_OK` via `201.58.191.60` in the Karakeep network test.
+
+The mandatory `gemini-api` service now requires **a successful authenticated model response**. An invalid-key gate, TLS handshake, or plausible Google IP can no longer make its route eligible. The required DNS candidate scan explicitly reserves space for allowed credentialed providers even when an old preferred plan contains many routes. Backups must also satisfy the same generation threshold.
+
+The controller migrates previous `local/manager.json` configurations: Gemini becomes authorized for model checks, and the exact legacy reference-only credential policy switches to the demonstrated `dns-ai` provider. **No API key is fetched or generated.** Until valid credentials are securely mounted, Gemini fails closed rather than selecting Comss again.
+
+To configure **one-time** encrypted provisioning of an existing Karakeep Gemini key and install from a pinned commit, follow [generation-aware deployment](docs/generation-routing.md). The installer automatically reuses `/etc/ai-dns-manager/gemini.env` on later upgrades. Provider queries run without credentials; model generation checks are restricted to the local trusted-provider allowlist and bounded per scan. Only the DNS-AI operator is trusted by the default example.
+
+**No VPN clients or Karakeep DNS settings are modified by installing the manager.** The local DNS listener and real Gemini model use must both be verified from the intended network.
 
 ## VPS performance fix (v0.5)
 
