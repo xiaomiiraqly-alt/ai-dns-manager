@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 — idempotent service-state permissions during reinstall
+
+- Fix repeated `install.py install --service-aware` failing with `PermissionError: /state` after the state directory was handed to UID/GID 65534.
+- Leave correctly owned private state directories unchanged; only repair ownership/permissions when needed using a network-isolated helper with narrowly scoped CHOWN/FOWNER capabilities.
+- Verify the directory's final owner/mode before switching any existing managed container; refuse symbolic-link state directories.
+- Add regressions covering existing state, permission repair, failed repair and symlink rejection. An unsuccessful preflight leaves the old managed container untouched.
+
 ## 0.5.0 — bounded staged service-aware scanner
 
 - Replace the 136-endpoint × 44-service first-round matrix with DNS prefilter, required-service validation and a small rotating optional-service frontier.
