@@ -128,7 +128,11 @@ def install(name, port, config, service_aware=False, secrets_file=None):
             result = subprocess.run(['docker','exec',name,'python','-m','ai_dns_manager.healthcheck'],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if result.returncode == 0:
-                print(f'Installed local pilot at 127.0.0.1:{port} UDP/TCP.')
+                print(f'Installed local DNS listener at 127.0.0.1:{port} UDP/TCP.')
+                if service_aware:
+                    print('AI route selection is ASYNCHRONOUS; readiness requires a valid active-plan.json.')
+                    print('Check progress: docker exec '+name+' python -m ai_dns_manager.manager status --config /app/config/router.json --state-dir /state')
+                    print('Scan progress: local/service-state/scan-progress.json')
                 print('Host DNS, VPN clients, and firewall were NOT modified. AI API success is NOT implied.')
                 return
             time.sleep(1)
