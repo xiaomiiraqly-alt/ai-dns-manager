@@ -137,8 +137,8 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
     reports = []
     remaining_api = max_api_requests
     required_tested = 0
-    if required and frontier and clock() < deadline and not (stop and stop.is_set()):
-        seconds = min(required_seconds, max(.1, deadline-clock()))
+    if required and frontier and deadline-clock() >= 1 and not (stop and stop.is_set()):
+        seconds = min(required_seconds, deadline-clock())
         req_report = scanner(frontier, required, workers=min(workers, 8), timeout=http_timeout,
                              round_budget=seconds, authorized=authorized,
                              max_api_requests=remaining_api,
@@ -154,7 +154,7 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
                    required_missing=[s['id'] for s in required if s['id'] not in tested_required],
                    http_evaluations=len(reports))
     preferred_tested = 0
-    if preferred and responsive and clock() < deadline and not (stop and stop.is_set()):
+    if preferred and responsive and deadline-clock() >= 1 and not (stop and stop.is_set()):
         winner_ids = {r['candidate'] for r in reports if r.get('eligible') and
                       r['service'] in {s['id'] for s in required}}
         # Keep each required winner and recent healthy routes when possible.
@@ -166,7 +166,7 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
             if c['id'] not in ids and len(chosen) < preferred_candidates:
                 ids.add(c['id']);chosen.append(c)
         seconds = min(preferred_seconds if all_required else 12,
-                      max(.1, deadline-clock()))
+                      deadline-clock())
         pref_report = scanner(chosen, preferred, workers=min(workers, 8),
                               timeout=http_timeout, round_budget=seconds,
                               authorized=authorized, max_api_requests=remaining_api,
