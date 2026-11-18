@@ -11,7 +11,7 @@ from helpers import answer
 def service(index=0, mode='preferred'):
     return {'id': 'service-'+str(index), 'domain': 'api.example.com',
             'mode': mode, 'kind': 'api', 'minimum_evidence': 'endpoint',
-            'path': '/v1/models', 'weight': 1}
+            'path': '/v1/models', 'routes': ['api.example.com'], 'weight': 1}
 
 
 def candidates(count=136):
