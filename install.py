@@ -93,6 +93,12 @@ def install(name, port, config, service_aware=False, secrets_file=None):
             shutil.copyfile(ROOT / ('config/manager.json' if service_aware else 'config/router.json'), config)
     config = config.resolve(strict=True)
     secret_args=[]
+    if service_aware and secrets_file is None:
+        # Persistent root-owned credential provisioning is a one-time action.
+        # Subsequent software updates automatically remount this same file.
+        default_secret=Path('/etc/ai-dns-manager/gemini.env')
+        if default_secret.is_file():
+            secrets_file=default_secret
     if secrets_file is not None:
         secrets_file=Path(secrets_file).resolve(strict=True)
         if not service_aware or ROOT in secrets_file.parents or secrets_file.stat().st_mode & 0o077:
@@ -102,6 +108,8 @@ def install(name, port, config, service_aware=False, secrets_file=None):
         from ai_dns_manager.manager import settings
         _,definitions=settings(config)
         allowed={v for service in definitions for key,v in service.get('auth',{}).items() if key in ('key_env','model_env')}
+        if any(service['id']=='gemini-api' for service in definitions):
+            allowed.update(('OPENAI_API_KEY','INFERENCE_TEXT_MODEL'))
         for line in secrets_file.read_text().splitlines():
             if not line.strip() or line.lstrip().startswith('#'):continue
             key,separator,value=line.partition('=')
