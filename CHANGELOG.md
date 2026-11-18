@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1 — continuously renewed Gemini evidence and automatic gateway activation
+
+- Refresh the evidence timestamp of an **unchanged, actually generation-verified** mandatory Gemini route on each successful scan, even while optional service changes wait for switch confirmation.
+- Track separate per-service evidence timestamps so untested optional AI routes cannot inherit Gemini's renewed lifetime.
+- Keep verified active upstreams and independent backup proof; drop optional routes when their own evidence expires.
+- Make `awg_dns_gateway.py install` automatically wait for an upcoming fresh generation-confirmed plan (maximum four minutes by default), without bypassing the security requirement.
+- Add offline tests for optional-route churn, missing Gemini generation, expired optional evidence, per-service gateway freshness and bounded proof waits.
+- Old Comss AUTH_GATE snapshots are still rejected. Active VPN/host DNS and existing peer configurations remain unchanged until the operator explicitly enables the private gateway.
+
 ## 0.8.0 — Karakeep split DNS over private AWG gateway
 
 - Add isolated split DNS sidecar in existing Karakeep AWG client network namespace, without restarting the VPN or application containers.

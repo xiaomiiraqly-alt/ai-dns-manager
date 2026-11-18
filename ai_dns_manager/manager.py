@@ -91,7 +91,7 @@ class ServicePool:
     def __init__(self,base,services,ttl=1800,clock=time.time):
         self.base=ProviderPool(base);self.base_config=copy.deepcopy(base)
         self.timeout=self.base.timeout;self.slots=self.base.slots;self.lock=threading.RLock()
-        self.clock=clock;self.ttl=ttl;self.pools={};self.checked_at=0
+        self.clock=clock;self.ttl=ttl;self.pools={};self.checked_at=0;self.route_verified={}
         self.definitions={s['id']:s for s in services}
         self.domains=sorted([(d,s['id']) for s in services if s['mode']!='off' for d in s['routes']],key=lambda x:len(x[0]),reverse=True)
     def allowed(self,ip):return self.base.allowed(ip)
@@ -120,11 +120,18 @@ class ServicePool:
             upstreams=[route['upstream']]+[b['upstream'] for b in route['backups']]
             cfg={**self.base_config,'default_group':'selected','groups':{'selected':upstreams},'rules':[],'health_interval_seconds':0}
             pools[route['service']]=ProviderPool(cfg)
-        with self.lock:self.pools=pools;self.checked_at=plan['checked_at']
+        with self.lock:
+            self.pools=pools
+            self.checked_at=plan['checked_at']
+            self.route_verified={r['service']:r.get('last_verified_at',plan['checked_at'])
+                                 for r in plan['routes'] if r.get('candidate')}
     def exchange(self,packet,domain,tcp=False):
         selected=next((sid for suffix,sid in self.domains if domain==suffix or domain.endswith('.'+suffix)),None)
         if selected is None:return self.base.exchange(packet,self.base.group_for(domain),tcp)
-        with self.lock:pool=self.pools.get(selected);valid=0<=self.clock()-self.checked_at<=self.ttl
+        with self.lock:
+            pool=self.pools.get(selected)
+            proof_time=self.route_verified.get(selected,self.checked_at)
+            valid=0<=self.clock()-proof_time<=self.ttl
         if pool is None or not valid:return wire.reply(packet)
         # Encrypted DNS may still return direct IPv6/HTTPS hints. Service-aware policies currently
         # validate IPv4 HTTPS; suppress AAAA and HTTPS/SVCB hints to prevent an untested parallel path.
@@ -166,6 +173,69 @@ class Controller:
         old.rename(archive)
         event('old_plan_archived',reason='requires_fresh_verification')
 
+    def renew_verified_routes(self, report):
+        """Refresh the *existing* selected route without changing providers.
+
+        Optional-route switching is subject to hysteresis, but a successful
+        recheck of the same mandatory Gemini candidate must renew its proof.
+        This method never promotes AUTH_GATE, never extends an untested
+        provider, and preserves independent expiration of preferred routes.
+        """
+        if self.current is None:
+            return None
+        checked=report['checked_at']
+        if not isinstance(checked,(int,float)) or isinstance(checked,bool):
+            return None
+        if not 0<=self.clock()-checked<=self.cfg['route_ttl_seconds']:
+            return None
+        rows={(r['candidate'],r['service']):r for r in report['results']}
+        definitions={s['id']:s for s in self.services}
+        refreshed=copy.deepcopy(self.current)
+        all_required_verified=True
+        for route in refreshed['routes']:
+            sid=route['service']
+            definition=definitions.get(sid)
+            if not definition or definition['mode']=='off' or not route.get('candidate'):
+                continue
+            fresh=rows.get((route['candidate'],sid))
+            confirmed=bool(fresh and fresh.get('eligible') and acceptable(definition,fresh))
+            if confirmed:
+                route['status']=fresh['status']
+                route['evidence']=fresh['evidence']
+                route['last_verified_at']=checked
+            else:
+                route.setdefault('last_verified_at',self.current['checked_at'])
+            proof_time=route['last_verified_at']
+            if definition['mode']=='required' and not confirmed:
+                all_required_verified=False
+            if not isinstance(proof_time,(int,float)) or not 0<=checked-proof_time<=self.cfg['route_ttl_seconds']:
+                if definition['mode']=='required':
+                    all_required_verified=False
+                else:
+                    route.update(status='EVIDENCE_EXPIRED',candidate=None,backups=[])
+                    route.pop('upstream',None)
+                    continue
+            validated_backups=[]
+            for backup in route.get('backups',[]):
+                item=rows.get((backup['candidate'],sid))
+                if item and item.get('eligible') and acceptable(definition,item):
+                    backup.update(status=item['status'],evidence=item['evidence'],
+                                  last_verified_at=checked)
+                else:
+                    backup.setdefault('last_verified_at',self.current['checked_at'])
+                when=backup['last_verified_at']
+                if (isinstance(when,(int,float)) and not isinstance(when,bool)
+                        and 0<=checked-when<=self.cfg['route_ttl_seconds']
+                        and acceptable(definition,backup)):
+                    validated_backups.append(backup)
+            route['backups']=validated_backups
+        if not all_required_verified:
+            return None
+        refreshed['checked_at']=checked
+        # Identical primary provider identities remain in place. The renewed
+        # plan is only an evidence refresh, not a forbidden provider switch.
+        return refreshed
+
     def once(self,offline=False,refresh=False,apply=False,stop=None):
         atomic_json(self.state/'scan-progress.json',{'phase':'provider_catalogue','timestamp':time.time()})
         def fetch(url):
@@ -203,12 +273,22 @@ class Controller:
         atomic_json(self.state/'service-report.json',report)
         atomic_json(self.state/'proposed-plan.json',plan)
         approved,reason=self.stability.approve(plan,self.current,self.clock())
-        if apply and approved:
-            # Persist only after validation; replace the running plan only as a complete transaction.
-            trial=ServicePool(self.cfg['router'],self.services,self.cfg['route_ttl_seconds']);trial.install(plan)
-            atomic_json(self.state/'active-plan.json',plan);self.pool.install(plan);self.current=plan
-        event('service_selection',applicable=plan['applicable'],missing_required=plan['missing_required'],applied=bool(apply and approved),reason=reason,
-            generation_confirmed=sum(r['status']=='GENERATION_OK' for r in plan['routes']))
+        applied=False
+        refreshed_only=False
+        selected=plan if approved else self.renew_verified_routes(report) if apply else None
+        if apply and selected is not None:
+            # Only previously selected routes with fresh evidence may be
+            # renewed while unrelated optional switches await hysteresis.
+            trial=ServicePool(self.cfg['router'],self.services,self.cfg['route_ttl_seconds'])
+            trial.install(selected)
+            atomic_json(self.state/'active-plan.json',selected)
+            self.pool.install(selected)
+            self.current=selected
+            applied=True
+            refreshed_only=not approved
+        event('service_selection',applicable=plan['applicable'],missing_required=plan['missing_required'],
+            applied=applied,refreshed_only=refreshed_only,reason=reason,
+            generation_confirmed=sum(r['status']=='GENERATION_OK' for r in (selected or plan)['routes']))
         return plan,reason
     def monitor(self,stop,offline=False):
         while not stop.is_set():

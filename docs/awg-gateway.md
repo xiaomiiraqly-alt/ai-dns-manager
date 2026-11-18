@@ -19,9 +19,11 @@ git checkout --detach origin/main
 python3 scripts/awg_dns_gateway.py install
 ```
 
-This is an operational action, not another diagnostic suite. It reads the existing containers `amnezia-awg2` and `ai-dns-manager`, determines the WG IPv4 address, connects the latter to the existing Docker bridge, and creates `ai-dns-awg-gateway`. It will **not activate if an applied Gemini route has not proved real `GENERATION_OK` in the last 30 minutes**. This is intentional to avoid sending peers to a fake-key `AUTH_GATE` route.
+This is an operational action, not another diagnostic suite. It reads the existing containers `amnezia-awg2` and `ai-dns-manager`, determines the WG IPv4 address, connects the latter to the existing Docker bridge, and creates `ai-dns-awg-gateway`. It will **not activate if an applied Gemini route has not proved real `GENERATION_OK` in the last 30 minutes**. If a fresh background scan is in progress, the command now waits for it (up to four minutes by default) rather than requiring repeated manual invocations. The wait never relaxes the verification requirement, and exits with an error if no fresh generation proof arrives.
 
 Successful output includes `PRIVATE DNS READY at <wg-ip>:53 (UDP/TCP)`. This verifies the new gateway listener and its local handling, not every remote API or end-user browser.
+
+Repeated successful Gemini generation for the same installed provider now refreshes that service's evidence clock even if unrelated optional service routes are still in a switch-cooldown. Unverified optional services do not inherit Gemini's renewed proof; their own routes still expire independently.
 
 The gateway listens on the **VPN server's private tunnel address only**. Docker publishes no public DNS port. Port 53 in the shared AWG network namespace must be unused; if something already binds there, the installer stops and does not replace it.
 
