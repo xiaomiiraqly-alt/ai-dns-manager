@@ -6,6 +6,16 @@
 
 The original workflow is restored: discover providers → ask for actual DNS answers → check each selected AI service through those answers → rank by required/preferred coverage → select a primary and same-service reserves → verify again periodically. DNS availability alone is not an AI availability test.
 
+## Private WireGuard DNS gateway
+
+An operational gateway helper is available for the egress VPS:
+
+```bash
+python3 scripts/awg_dns_gateway.py install
+```
+
+It binds DNS UDP/TCP port 53 to the **private** AmneziaWG server interface, and forwards to the already-running AI DNS Manager without changing host DNS, firewall, peer configs or VPN routing rules. Requires a recent applied `GENERATION_OK` Gemini plan and a free DNS port in the AWG namespace. Clients must **individually use the printed private DNS address** in their tunnel profiles; WireGuard does not push DNS configuration. For rollback run `python3 scripts/awg_dns_gateway.py uninstall`. See [AWG private DNS gateway](docs/awg-gateway.md) for exact scope and upgrade instructions.
+
 ## Gemini real-generation routing (v0.6)
 
 A live deployment exposed a false positive: **Comss**, WebShift and ZombieDNS returned `AUTH_GATE` when checked with an invalid key, but authenticated Gemini generation returned `REGION_BLOCKED`. **DNS-AI** returned `GENERATION_OK` via `201.58.191.60` in the Karakeep network test.
