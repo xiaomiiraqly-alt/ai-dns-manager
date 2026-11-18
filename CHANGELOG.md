@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 — Karakeep split DNS over private AWG gateway
+
+- Add isolated split DNS sidecar in existing Karakeep AWG client network namespace, without restarting the VPN or application containers.
+- Forward mandatory Gemini and other required AI domains to the previously verified egress private DNS gateway; only preferred AI domains may fall back to original resolvers.
+- Preserve current Karakeep Chrome/web and Docker service names through their original DNS resolvers, including Docker's 127.0.0.11 where present.
+- Back up each Docker-managed `resolv.conf` in a protected local manifest, update the existing file in place only after private and ordinary DNS checks, and restore on failure or uninstall.
+- Enforce same-AWG-network-namespace checks for web/Chrome; refuse unexpected Docker resolver paths and unmanaged sidecars.
+- Add offline integration tests for installer, non-public binding, unchanged Docker resolver identity, namespace checks, and rollback.
+- Explicitly document runtime-only persistence: a Docker/Compose container recreation may reset DNS, requiring a controlled follow-up.
+
 ## 0.7.0 — private AmneziaWG DNS gateway (opt-in)
 
 - Add an opt-in DNS UDP/TCP gateway on the existing AWG container's **private** interface port 53, forwarding queries to AI DNS Manager.
