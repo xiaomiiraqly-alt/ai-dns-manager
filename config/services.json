@@ -403,7 +403,7 @@
       "domain": "generativelanguage.googleapis.com",
       "kind": "api",
       "mode": "required",
-      "minimum_evidence": "endpoint",
+      "minimum_evidence": "generation",
       "path": "/v1beta/models",
       "weight": 30,
       "auth": {
@@ -414,7 +414,7 @@
         "model_env": "GEMINI_MODEL"
       },
       "source": "https://generativelanguage.googleapis.com/",
-      "scope": "API gate without credentials; real operation only with explicit per-service authorization"
+      "scope": "Mandatory real authenticated text-generation probe: verified TLS plus nonempty Gemini model output, not merely an invalid-key AUTH_GATE."
     },
     {
       "id": "openai-api",
