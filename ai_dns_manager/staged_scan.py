@@ -18,7 +18,7 @@ def _safe_progress(callback, phase, **fields):
         callback({'phase': phase, 'timestamp': time.time(), **fields})
 
 
-def _frontier(rows, maximum, cycle=0, previous=()):
+def _frontier(rows, maximum, cycle=0, previous=(), priority_provider_ids=()):
     """Prefer non-reference answers and distinct reply sets; rotate unvisited sets."""
     if not rows or maximum <= 0:
         return []
@@ -43,9 +43,31 @@ def _frontier(rows, maximum, cycle=0, previous=()):
             selected.append(c)
             seen.add(c['id'])
     byid = {r['candidate']['id']: r for r in rows}
+    # A long historical plan may contain dozens of distinct preferred
+    # routes. It must not consume the entire small mandatory scan frontier.
+    previous_limit=max(1,maximum//4)
     for candidate_id in previous:
+        if len(selected)>=previous_limit:
+            break
         if candidate_id in byid:
             take(byid[candidate_id])
+    # Mandatory generation cannot be verified if its trusted providers are
+    # crowded out by many merely reachable/old candidates. Reserve a small
+    # number of diverse DNS-answer groups for explicit credential allowlists.
+    # Never treat trust/priority as proof: the full HTTPS generation probe is
+    # still required before a route is eligible.
+    for provider_id in priority_provider_ids:
+        alternatives=sorted((r for r in rows if r['candidate']['provider_id']==provider_id),
+                            key=lambda r:(r['latency_ms'],r['candidate']['id']))
+        provider_answers=set()
+        for row in alternatives:
+            signature=tuple(row['addresses'])
+            if signature in provider_answers:
+                continue
+            provider_answers.add(signature)
+            take(row)
+            if len(provider_answers)>=3 or len(selected)>=maximum:
+                break
     # A fresh baseline is valuable even if all smart DNS candidates are down.
     for key in common[:1]:
         reference = [r for r in groups[key] if r['candidate']['provider_id'] == 'reference']
@@ -129,8 +151,9 @@ def staged_scan(candidates, services, *, workers=8, round_budget=300,
     with ThreadPoolExecutor(max_workers=min(workers, 8)) as executor:
         checked = list(executor.map(probe, candidates))
     responsive = [r for r in checked if r is not None]
-    previous_ids = [c for c, _ in preferred_endpoints]
-    frontier = _frontier(responsive, required_candidates, cycle, previous_ids)
+    previous_ids = [c for c, sid in preferred_endpoints if sid in {s['id'] for s in required}]
+    frontier = _frontier(responsive, required_candidates, cycle, previous_ids,
+                         priority_provider_ids=[p for p in credential_providers if p!='reference'] if authorized else ())
     _safe_progress(progress, 'required_services', candidates=len(candidates),
                    dns_live=len(responsive), selected=len(frontier),
                    required=len(required), preferred=len(preferred))

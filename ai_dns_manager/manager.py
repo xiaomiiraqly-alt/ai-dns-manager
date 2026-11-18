@@ -52,6 +52,35 @@ def settings(path):
     services=load_services(read_json(ROOT/'config/services.json'),cfg['service_overrides'])
     known={s['id']:s for s in services}
     if any(s not in known or not known[s].get('auth') for s in cfg['authorized_services']):raise ValueError('Unknown or unsupported authenticated service')
+    # Gemini is mandatory for this deployment. A fake-key AUTH_GATE was shown
+    # to be a false positive (Comss, WebShift and ZombieDNS), while a real
+    # model response succeeded only via DNS-AI. Keep operator-controlled
+    # profile and provider allowlists but never downgrade this required API.
+    gemini=known.get('gemini-api')
+    if gemini and gemini['mode']=='required':
+        if gemini['minimum_evidence']!='generation':
+            raise ValueError('Required Gemini API must use generation evidence')
+        auth=gemini.get('auth')
+        if not auth:
+            raise ValueError('Required Gemini API lacks an authenticated generation adapter')
+        # Existing local/manager.json files predate v0.6 and had empty
+        # authorized_services and reference-only credential providers. Apply
+        # this known requested policy to them without overwriting user files.
+        legacy_reference_default=(not cfg['authorized_services']
+                                  and cfg['credential_provider_ids']==['reference'])
+        cfg['authorized_services']=list(dict.fromkeys(cfg['authorized_services']+['gemini-api']))
+        # The v0.5 local config used a reference-only default, which would
+        # spend credentialed requests on a route already observed REGION_BLOCKED.
+        # Migrate that *exact* legacy default to the one verified route.
+        # Explicit trust lists remain operator-controlled and can contain
+        # additional providers for automatic fallback.
+        if legacy_reference_default:
+            cfg['credential_provider_ids']=['dns-ai']
+        else:
+            cfg['credential_provider_ids']=list(dict.fromkeys(cfg['credential_provider_ids']+['dns-ai']))
+    # Nothing above creates credentials: the manager fails closed until a
+    # separate, root-owned env file is explicitly mounted at installation.
+
     # Validate baseline DNS settings before any network activity.
     ProviderPool(cfg['router'])
     return cfg,services

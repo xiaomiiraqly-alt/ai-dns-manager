@@ -1,4 +1,4 @@
-# Service-aware selection (v0.4)
+# Service-aware selection (v0.6)
 
 ## Restore the original behavior, adapted to a server
 
@@ -52,7 +52,7 @@ Two HTTP paths on the same hostname cannot be given different DNS routes. To use
 
 `AUTH_GATE` (often a known invalid-key response) only has endpoint evidence. An arbitrary 400/401/403, a login redirect to another host, a CAPTCHA, or a TLS handshake does not count as usable generation. `REGION_BLOCKED`, `AUTH_OR_PERMISSION`, `QUOTA_OR_RATE_LIMIT`, `MODEL_OR_CONFIGURATION`, `BOT_CHALLENGE`, `NETWORK_ERROR` and `TLS_ERROR` remain separate.
 
-No unauthenticated probe can establish account/model usability. To make Karakeep's real Gemini generation mandatory, choose `generation`, opt in to its credential check and supply its existing key/model locally. Without a key, this mode truthfully reports missing evidence and does not apply a pretend-success plan.
+No unauthenticated probe can establish account/model usability. **Gemini is now mandatory at `generation` evidence by default.** The manager migrates the older local reference-only credential policy to DNS-AI for this known service, without copying any credentials or lowering TLS validation. Without a key, it reports missing evidence and does not apply a pretend-success plan. Use [generation deployment](generation-routing.md) for one-time secure credential provisioning.
 
 ## Anonymous and real-key checks
 
@@ -61,12 +61,12 @@ Every enabled profile gets a no-key or deliberately-invalid-key check. Real requ
 ```json
 {
   "authorized_services": ["gemini-api"],
-  "credential_provider_ids": ["dns-ai", "reference"],
-  "max_api_requests": 8
+  "credential_provider_ids": ["dns-ai"],
+  "max_api_requests": 4
 }
 ```
 
-These IDs are explicit operator trust decisions, not recommendations. Default `authorized_services` is empty. The model and key come from `GEMINI_MODEL` and `GEMINI_API_KEY`, or the specific environment-variable names in a custom profile. The legacy single-target Gemini command still accepts the Karakeep aliases.
+These IDs are explicit operator trust decisions, not recommendations. Mandatory Gemini generation is authorized by the configured v0.6 policy, but **no requests are sent with credentials until a key/model is explicitly provisioned**. The model and key come from `GEMINI_MODEL` and `GEMINI_API_KEY`, or the specific environment-variable names in a custom profile. The service-aware Gemini probe accepts the Karakeep aliases `OPENAI_API_KEY` and `INFERENCE_TEXT_MODEL` as well.
 
 OpenAI-compatible and Anthropic adapters use a short text prompt and a bounded token limit. The generic `json` adapter supports an explicit GET/POST, configured authorization header and a JSON success pointer. It does not treat HTTP 200 alone as success. No account content or error-body text is saved to reports. Certificates are verified before HTTP headers containing keys are sent. Redirects are never followed with credentials.
 

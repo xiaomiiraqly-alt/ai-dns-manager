@@ -252,7 +252,12 @@ class ControllerIntegrationTests(unittest.TestCase):
             plan,_=controller.once(apply=True)
             self.assertFalse(plan['applicable']);self.assertEqual((Path(tmp)/'active-plan.json').read_bytes(),active)
     def test_settings_change_rejects_previous_saved_plan(self):
-        cfg,_=settings('config/manager.json');defs=[service()]
+        cfg,_=settings('config/manager.json')
+        # This fixture checks the legacy unauthenticated plan reload path.
+        # Production Gemini uses authorized generation and must recheck on
+        # every process restart rather than reviving saved keyed evidence.
+        cfg['authorized_services']=[]
+        defs=[service()]
         fake={'candidates':candidates(),'providers':[],'sources':[]}
         with tempfile.TemporaryDirectory() as tmp,patch('ai_dns_manager.manager.build_catalogue',return_value=fake):
             controller=Controller(cfg,defs,tmp,scanner=lambda *a,**k:report(defs,{('relay','gemini-api')}))
