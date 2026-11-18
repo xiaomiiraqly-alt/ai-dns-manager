@@ -61,10 +61,33 @@ def active_generation(state):
     route=routes[0]
     if route.get('status')!='GENERATION_OK' or route.get('evidence')!=4:
         raise ValueError('Mandatory Gemini has no verified generation route')
-    when=data.get('checked_at')
+    # A plan can remain selected while unrelated preferred services change.
+    # Only a fresh successful recheck of THIS required route renews proof.
+    when=route.get('last_verified_at',data.get('checked_at'))
     if isinstance(when,bool) or not isinstance(when,(int,float)) or not 0<=time.time()-when<=1800:
         raise ValueError('Gemini generation proof expired')
     return route['provider_id']
+
+
+def await_active_generation(state, seconds=0, interval=3):
+    """Wait for a new generation-verified plan; never weaken the proof gate."""
+    if isinstance(seconds,bool) or not isinstance(seconds,(int,float)) or not 0<=seconds<=600:
+        raise ValueError('Invalid generation wait limit')
+    deadline=time.monotonic()+seconds
+    last=None
+    while True:
+        try:
+            return active_generation(state)
+        except ValueError as exc:
+            last=exc
+            # Invalid or unverified routes must not be treated as usable;
+            # waiting is only useful while scans are generating a new plan.
+            if time.monotonic()>=deadline:
+                raise
+            if str(exc) not in ('Gemini generation proof expired',
+                                'No applied service-aware plan; Gemini must first pass real generation'):
+                raise
+            time.sleep(min(interval,max(0,deadline-time.monotonic())))
 
 
 def config_for(manager_ip, awg):
@@ -106,7 +129,7 @@ def ensure_manager_network(manager, network):
     return address
 
 
-def provision(manager, awg_container, network, interface):
+def provision(manager, awg_container, network, interface, wait_seconds=0):
     current=inspect(GATEWAY)
     require_label(current,OWNER_LABEL,GATEWAY)
     awg=inspect(awg_container)
@@ -115,7 +138,7 @@ def provision(manager, awg_container, network, interface):
     if network not in (awg.get('NetworkSettings',{}).get('Networks') or {}):
         raise ValueError('AWG is not connected to the expected private Docker network')
     address=awg_address(awg_container,interface)
-    provider=active_generation(ROOT/'local'/'service-state')
+    provider=await_active_generation(ROOT/'local'/'service-state',seconds=wait_seconds)
     manager_ip=ensure_manager_network(manager,network)
     if current and current['State']['Running']:
         # Detect stale forwarding after main manager container replacement.
@@ -194,13 +217,15 @@ def main():
     p.add_argument('--awg',default='amnezia-awg2')
     p.add_argument('--network',default='amnezia-dns-net')
     p.add_argument('--interface',default='awg0')
+    p.add_argument('--wait-seconds',type=int,default=240,
+                   help='Wait for the next real Gemini generation proof, without bypassing it (0..600)')
     a=p.parse_args()
     if not all(re.fullmatch('[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}',v)
                for v in (a.manager,a.awg,a.network,a.interface)):
         p.error('Invalid container, network or interface name')
     try:
         if a.action=='install':
-            provision(a.manager,a.awg,a.network,a.interface)
+            provision(a.manager,a.awg,a.network,a.interface,a.wait_seconds)
         elif a.action=='status':
             info=inspect(GATEWAY)
             require_label(info,OWNER_LABEL,GATEWAY)
