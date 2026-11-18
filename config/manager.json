@@ -3,7 +3,7 @@
   "scan_interval_seconds": 300,
   "round_budget_seconds": 300,
   "route_ttl_seconds": 1800,
-  "workers": 12,
+  "workers": 8,
   "failure_rounds": 2,
   "switch_cooldown_seconds": 300,
   "max_api_requests": 8,
@@ -122,5 +122,13 @@
         ]
       }
     ]
+  },
+  "scan_strategy": {
+    "required_candidates": 12,
+    "preferred_candidates": 4,
+    "dns_timeout": 1.5,
+    "http_timeout": 2.5,
+    "required_seconds": 55,
+    "preferred_seconds": 75
   }
 }
