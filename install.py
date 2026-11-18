@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -43,6 +44,40 @@ def rollback(name):
     docker('rename', backup, name)
     docker('start', name)
     print('Previous image and configuration snapshot restored; inspect health status.')
+
+
+def state_permissions_ready(state):
+    """A running service already owns its private writable state directory.
+
+    Repeating chmod as root inside a CAP_CHOWN-only helper fails with EPERM
+    once the directory belongs to UID 65534. Check before modifying it.
+    """
+    info = state.stat()
+    return (info.st_uid == 65534 and info.st_gid == 65534
+            and stat.S_IMODE(info.st_mode) == 0o700)
+
+
+def prepare_state_directory(state, image):
+    """Set ownership only when required; never follow a state-dir symlink."""
+    if state.is_symlink():
+        raise ValueError('Refusing a symlinked state directory')
+    state.mkdir(mode=0o700, exist_ok=True)
+    if not state.is_dir():
+        raise ValueError('State directory must be a directory')
+    mount = 'type=bind,source='+str(state)+',target=/state'
+    if not state_permissions_ready(state):
+        # This helper runs without network, with only the two capabilities
+        # required to repair both root-owned and 65534-owned directories.
+        # FOWNER is necessary for chmod of a directory already owned by
+        # nobody; CHOWN is necessary for a first-time root-owned directory.
+        docker('run','--rm','--network','none','--read-only','--user','0:0',
+               '--cap-drop','ALL','--cap-add','CHOWN','--cap-add','FOWNER',
+               '--security-opt','no-new-privileges','--mount',mount,
+               '--entrypoint','python',image,'-c',
+               "import os; os.chmod('/state',0o700); os.chown('/state',65534,65534)")
+        if not state_permissions_ready(state):
+            raise RuntimeError('Failed to prepare private state directory ownership/mode')
+    return mount
 
 
 def install(name, port, config, service_aware=False, secrets_file=None):
@@ -100,12 +135,7 @@ def install(name, port, config, service_aware=False, secrets_file=None):
     command=['--listen','0.0.0.0','--port','5353']
     if service_aware:
         state=local / 'service-state'
-        state.mkdir(mode=0o700,exist_ok=True)
-        state_mount='type=bind,source='+str(state)+',target=/state'
-        # Isolated helper only changes ownership of this application's state directory.
-        docker('run','--rm','--network','none','--read-only','--user','0:0','--cap-drop','ALL',
-               '--cap-add','CHOWN','--security-opt','no-new-privileges','--mount',state_mount,
-               '--entrypoint','python',image,'-c',"import os; os.chmod('/state',0o700); os.chown('/state',65534,65534)")
+        state_mount=prepare_state_directory(state,image)
         state_args=['--mount',state_mount]
         command=['serve','--config','/app/config/router.json','--state-dir','/state',*command]
     moved, attempting_new = False, False
