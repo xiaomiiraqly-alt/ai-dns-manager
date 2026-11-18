@@ -107,6 +107,11 @@ def probe_http(service,ip,timeout=8,authenticated=False,authorized=(),budget=Non
             if service['id'] not in authorized or not service.get('auth'):return dict(result,status='PROBE_NOT_AUTHORIZED')
             auth=service['auth'];key=env.get(auth['key_env'],'')
             model=env.get(auth.get('model_env',''),'')
+            # Existing Karakeep uses OpenAI-compatible Gemini environment
+            # aliases. Support them without storing/printing any credentials.
+            if service['id']=='gemini-api':
+                key=key or env.get('OPENAI_API_KEY','')
+                model=model or env.get('INFERENCE_TEXT_MODEL','')
             if not key or (auth['adapter']!='json' and not model):return dict(result,status='KEY_MISSING')
             if any(c in key+model for c in '\r\n') or len(key)>4096 or len(model)>200:return dict(result,status='MODEL_OR_CONFIGURATION')
             if budget is None or not budget.take():return dict(result,status='BUDGET_EXHAUSTED')
